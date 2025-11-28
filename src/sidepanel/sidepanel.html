@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy Analysis</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header id="header">
+      <div class="header-content">
+        <div class="header-icon">&#128274;</div>
+        <div class="header-text">
+          <h1>Privacy Policy Analysis</h1>
+          <p id="status-text">Ready to analyze</p>
+        </div>
+      </div>
+      <button id="settings-btn" class="icon-btn" title="Settings">&#9881;</button>
+    </header>
+
+    <!-- Main Content -->
+    <main id="content">
+      <!-- Initial State -->
+      <section id="initial-state" class="section">
+        <div class="empty-state">
+          <div class="empty-icon">&#128196;</div>
+          <h2>No Analysis Yet</h2>
+          <p>Visit a privacy policy page and click "Analyze Policy" when prompted, or click the button below if you're already on a policy page.</p>
+          <button id="analyze-btn" class="btn btn-primary">Analyze Current Page</button>
+        </div>
+      </section>
+
+      <!-- Loading State -->
+      <section id="loading-state" class="section hidden">
+        <div class="loading-container">
+          <div class="loading-spinner"></div>
+          <p>Analyzing privacy policy...</p>
+          <div id="streaming-preview" class="streaming-preview"></div>
+        </div>
+      </section>
+
+      <!-- Results State -->
+      <section id="results-state" class="section hidden">
+        <!-- Overall Rating -->
+        <div id="rating-card" class="rating-card">
+          <div class="rating-badge" id="rating-badge">MODERATE</div>
+          <p id="rating-explanation">Loading...</p>
+        </div>
+
+        <!-- Summary -->
+        <div class="result-section">
+          <h2 class="section-title">
+            <span class="section-icon">&#128203;</span>
+            Summary
+          </h2>
+          <div id="summary-content" class="section-content"></div>
+        </div>
+
+        <!-- Key Risks -->
+        <div class="result-section">
+          <h2 class="section-title">
+            <span class="section-icon">&#9888;</span>
+            Key Risks
+          </h2>
+          <div id="risks-content" class="section-content"></div>
+        </div>
+
+        <!-- Data Collection -->
+        <div class="result-section collapsible">
+          <h2 class="section-title section-toggle">
+            <span class="section-icon">&#128202;</span>
+            Data Collection
+            <span class="toggle-icon">&#9660;</span>
+          </h2>
+          <div id="data-collection-content" class="section-content collapsed"></div>
+        </div>
+
+        <!-- Data Sharing -->
+        <div class="result-section collapsible">
+          <h2 class="section-title section-toggle">
+            <span class="section-icon">&#128101;</span>
+            Data Sharing
+            <span class="toggle-icon">&#9660;</span>
+          </h2>
+          <div id="data-sharing-content" class="section-content collapsed"></div>
+        </div>
+
+        <!-- User Rights -->
+        <div class="result-section collapsible">
+          <h2 class="section-title section-toggle">
+            <span class="section-icon">&#9989;</span>
+            Your Rights
+            <span class="toggle-icon">&#9660;</span>
+          </h2>
+          <div id="user-rights-content" class="section-content collapsed"></div>
+        </div>
+      </section>
+
+      <!-- Error State -->
+      <section id="error-state" class="section hidden">
+        <div class="error-container">
+          <div class="error-icon">&#9888;</div>
+          <h2>Analysis Failed</h2>
+          <p id="error-message">An error occurred while analyzing the policy.</p>
+          <button id="retry-btn" class="btn btn-primary">Try Again</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Chat Interface -->
+    <section id="chat-section">
+      <div class="chat-header" id="chat-toggle">
+        <span class="chat-icon">&#128172;</span>
+        <span>Ask Questions</span>
+        <span class="toggle-icon" id="chat-toggle-icon">&#9650;</span>
+      </div>
+      <div id="chat-container" class="collapsed">
+        <div id="chat-messages"></div>
+        <div id="chat-input-container">
+          <textarea
+            id="chat-input"
+            placeholder="Ask a question about this policy..."
+            rows="1"
+          ></textarea>
+          <button id="send-btn" class="btn btn-send" disabled>
+            <span>&#10148;</span>
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
