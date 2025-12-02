@@ -7,9 +7,8 @@
 }
 
 :root {
-  --primary-color: #667eea;
-  --primary-dark: #5a6fd6;
-  --secondary-color: #764ba2;
+  --primary-color: #649eff;
+  --primary-dark: #4a8ae6;
   --success-color: #48bb78;
   --warning-color: #ed8936;
   --danger-color: #f56565;
@@ -49,10 +48,7 @@ header h1 {
   font-size: 24px;
   font-weight: 600;
   margin-bottom: 8px;
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--primary-color);
 }
 
 header p {
@@ -121,7 +117,7 @@ input[type="text"]:focus,
 input[type="password"]:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px rgba(100, 158, 255, 0.1);
 }
 
 .btn-icon {
@@ -217,9 +213,9 @@ input[type="range"]::-webkit-slider-thumb {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  background: var(--primary-color);
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 2px 6px rgba(100, 158, 255, 0.4);
 }
 
 #threshold-value {
@@ -263,13 +259,13 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  background: var(--primary-color);
   color: white;
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 12px rgba(100, 158, 255, 0.4);
 }
 
 .btn-secondary {

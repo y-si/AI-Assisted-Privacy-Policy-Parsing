@@ -17,20 +17,10 @@ class ClauseHighlighter {
     style.id = 'privacy-parser-highlight-styles';
     style.textContent = `
       .${this.highlightClass} {
-        background: linear-gradient(120deg, #ffeaa7 0%, #fdcb6e 100%) !important;
+        background: #ffeaa7 !important;
         padding: 2px 4px !important;
         border-radius: 3px !important;
         box-shadow: 0 2px 8px rgba(253, 203, 110, 0.4) !important;
-        animation: privacy-parser-pulse 1.5s ease-in-out infinite !important;
-      }
-
-      @keyframes privacy-parser-pulse {
-        0%, 100% {
-          box-shadow: 0 2px 8px rgba(253, 203, 110, 0.4);
-        }
-        50% {
-          box-shadow: 0 2px 16px rgba(253, 203, 110, 0.8);
-        }
       }
 
       .${this.highlightClass}-fade {

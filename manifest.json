@@ -1,9 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "AI Privacy Policy Parser",
+  "name": "AI Privacy Policy Helper",
   "version": "1.0.0",
-  "description": "AI-assisted summarization and Q&A for privacy policies and terms of service",
-
+  "description": "CS 1050 Final Project by Brian Lin, Jackson Moody, and Sein Yun.",
   "permissions": [
     "sidePanel",
     "activeTab",
@@ -11,19 +10,18 @@
     "storage",
     "scripting"
   ],
-
   "host_permissions": [
     "<all_urls>"
   ],
-
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"
   },
-
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "<all_urls>"
+      ],
       "js": [
         "src/lib/Readability.js",
         "src/lib/purify.min.js",
@@ -33,15 +31,15 @@
         "src/content/highlighter.js",
         "src/content/content-script.js"
       ],
-      "css": ["styles/overlay.css"],
+      "css": [
+        "styles/overlay.css"
+      ],
       "run_at": "document_idle"
     }
   ],
-
   "side_panel": {
     "default_path": "src/sidepanel/sidepanel.html"
   },
-
   "action": {
     "default_title": "Privacy Policy Parser",
     "default_icon": {
@@ -51,23 +49,24 @@
       "128": "assets/icons/icon128.png"
     }
   },
-
   "options_ui": {
     "page": "src/options/options.html",
     "open_in_tab": true
   },
-
   "icons": {
     "16": "assets/icons/icon16.png",
     "32": "assets/icons/icon32.png",
     "48": "assets/icons/icon48.png",
     "128": "assets/icons/icon128.png"
   },
-
   "web_accessible_resources": [
     {
-      "resources": ["src/lib/*"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "src/lib/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

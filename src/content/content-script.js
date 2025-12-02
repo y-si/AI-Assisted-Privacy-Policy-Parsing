@@ -1,12 +1,12 @@
 // Main Content Script
 // Coordinates detection, extraction, overlay, and highlighting
 
-(async function() {
-  'use strict';
+(async function () {
+  "use strict";
 
   // Wait for page to be fully loaded
-  if (document.readyState !== 'complete') {
-    await new Promise(resolve => window.addEventListener('load', resolve));
+  if (document.readyState !== "complete") {
+    await new Promise((resolve) => window.addEventListener("load", resolve));
   }
 
   // Initialize components
@@ -18,11 +18,61 @@
   // Store extracted content for later use
   let extractedContent = null;
 
+  // Track if agreement button detection has been set up
+  let agreementDetectionEnabled = false;
+
+  // Track checkboxes we've already notified about (to prevent duplicates)
+  const notifiedCheckboxes = new Set();
+
+  // Patterns for detecting "I agree" / "Accept" buttons
+  const AGREEMENT_BUTTON_PATTERNS = [
+    /^i agree$/i,
+    /^agree$/i,
+    /^accept$/i,
+    /^i accept$/i,
+    /^accept all$/i,
+    /^accept terms$/i,
+    /^accept and continue$/i,
+    /^i have read and agree$/i,
+    /^continue$/i,
+    /^got it$/i,
+    /^ok$/i,
+    /^okay$/i,
+    /^submit$/i,
+    /^confirm$/i,
+    /^i consent$/i,
+    /^consent$/i,
+    /^agree and continue$/i,
+    /^accept cookies$/i,
+    /^allow all$/i,
+    /^allow cookies$/i,
+  ];
+
+  // Patterns for detecting agreement checkboxes (text near the checkbox)
+  const AGREEMENT_CHECKBOX_PATTERNS = [
+    /i have read and agree/i,
+    /i agree to/i,
+    /i accept the/i,
+    /i consent to/i,
+    /agree to the terms/i,
+    /accept the terms/i,
+    /terms of service/i,
+    /terms and conditions/i,
+    /privacy policy/i,
+    /privacy statement/i,
+    /privacy notice/i,
+    /user agreement/i,
+    /terms of use/i,
+    /by checking this box/i,
+    /by clicking/i,
+    /i acknowledge/i,
+  ];
+
   // Run detection
   async function runDetection() {
     const result = detector.detect();
 
-    console.log('[Privacy Parser] Detection result:', result);
+    console.log("[Privacy Parser] Detection result:", result);
 
     if (result.isPolicy) {
       // Show overlay notification
@@ -30,41 +80,349 @@
 
       // Pre-extract content for faster analysis
       extractedContent = await extractor.extract();
-      console.log('[Privacy Parser] Content extracted:', extractedContent.method);
+      console.log(
+        "[Privacy Parser] Content extracted:",
+        extractedContent.method
+      );
+
+      // Notify service worker to auto-open side panel
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: "POLICY_DETECTED",
+          confidence: result.confidence,
+          url: window.location.href,
+        });
+        console.log(
+          "[Privacy Parser] Policy detection notification sent:",
+          response
+        );
+      } catch (error) {
+        console.log(
+          "[Privacy Parser] Could not notify service worker:",
+          error.message
+        );
+      }
+
+      // Set up agreement button detection for this page
+      setupAgreementButtonDetection();
     }
+  }
+
+  // Detect and monitor "I agree" / "Accept" buttons
+  function setupAgreementButtonDetection() {
+    // Only set up once
+    if (agreementDetectionEnabled) return;
+    agreementDetectionEnabled = true;
+
+    // Find potential agreement buttons
+    const findAgreementButtons = () => {
+      const selectors = [
+        "button",
+        'input[type="submit"]',
+        'input[type="button"]',
+        'a[role="button"]',
+        '[role="button"]',
+        ".btn",
+        ".button",
+      ];
+
+      const elements = document.querySelectorAll(selectors.join(", "));
+      const agreementButtons = [];
+
+      elements.forEach((el) => {
+        const text = (el.textContent || el.value || "").trim();
+
+        // Check if button text matches agreement patterns
+        for (const pattern of AGREEMENT_BUTTON_PATTERNS) {
+          if (pattern.test(text)) {
+            agreementButtons.push({ element: el, text });
+            break;
+          }
+        }
+      });
+
+      return agreementButtons;
+    };
+
+    // Handle agreement button click
+    const handleAgreementClick = async (event) => {
+      const clickedElement = event.target;
+      const text = (
+        clickedElement.textContent ||
+        clickedElement.value ||
+        ""
+      ).trim();
+
+      // Check if this matches an agreement pattern
+      let isAgreementButton = false;
+      for (const pattern of AGREEMENT_BUTTON_PATTERNS) {
+        if (pattern.test(text)) {
+          isAgreementButton = true;
+          break;
+        }
+      }
+
+      // Also check parent elements (for buttons with nested text)
+      if (!isAgreementButton) {
+        let parent = clickedElement.parentElement;
+        for (let i = 0; i < 3 && parent; i++) {
+          const parentText = (parent.textContent || "").trim();
+          for (const pattern of AGREEMENT_BUTTON_PATTERNS) {
+            if (pattern.test(parentText) && parentText.length < 50) {
+              isAgreementButton = true;
+              break;
+            }
+          }
+          if (isAgreementButton) break;
+          parent = parent.parentElement;
+        }
+      }
+
+      if (isAgreementButton) {
+        console.log("[Privacy Parser] Agreement button clicked:", text);
+
+        // Show warning overlay
+        overlay.showAgreementNotification(text);
+
+        // Notify service worker
+        try {
+          const response = await chrome.runtime.sendMessage({
+            type: "POLICY_AGREEMENT_CLICKED",
+            buttonText: text,
+            url: window.location.href,
+          });
+          console.log(
+            "[Privacy Parser] Agreement notification sent:",
+            response
+          );
+        } catch (error) {
+          console.log(
+            "[Privacy Parser] Could not notify service worker:",
+            error.message
+          );
+        }
+      }
+    };
+
+    // Add click listener to document (capturing phase to catch early)
+    document.addEventListener("click", handleAgreementClick, true);
+
+    // Handle agreement checkbox changes
+    const handleCheckboxChange = async (event) => {
+      const checkbox = event.target;
+
+      // Only trigger on checking the box (not unchecking)
+      if (!checkbox.checked) return;
+
+      // Create a unique identifier for this checkbox
+      const checkboxId =
+        checkbox.id || checkbox.name || Math.random().toString();
+
+      // Prevent duplicate notifications for the same checkbox
+      if (notifiedCheckboxes.has(checkboxId)) {
+        console.log(
+          "[Privacy Parser] Already notified for checkbox:",
+          checkboxId
+        );
+        return;
+      }
+
+      // Get the text associated with this checkbox
+      const associatedText = getCheckboxAssociatedText(checkbox);
+      console.log(
+        "[Privacy Parser] Checkbox associated text:",
+        associatedText.substring(0, 200)
+      );
+
+      // Check if this is an agreement checkbox
+      let isAgreementCheckbox = false;
+      for (const pattern of AGREEMENT_CHECKBOX_PATTERNS) {
+        if (pattern.test(associatedText)) {
+          isAgreementCheckbox = true;
+          console.log("[Privacy Parser] Matched pattern:", pattern);
+          break;
+        }
+      }
+
+      if (isAgreementCheckbox) {
+        // Mark this checkbox as notified
+        notifiedCheckboxes.add(checkboxId);
+
+        console.log(
+          "[Privacy Parser] Agreement checkbox checked:",
+          associatedText.substring(0, 100)
+        );
+
+        // Show warning overlay
+        overlay.showAgreementNotification("I agree to Terms/Privacy Policy");
+
+        // Notify service worker
+        try {
+          const response = await chrome.runtime.sendMessage({
+            type: "POLICY_AGREEMENT_CLICKED",
+            buttonText: "Checkbox: " + associatedText.substring(0, 50),
+            url: window.location.href,
+          });
+          console.log(
+            "[Privacy Parser] Checkbox agreement notification sent:",
+            response
+          );
+        } catch (error) {
+          console.log(
+            "[Privacy Parser] Could not notify service worker:",
+            error.message
+          );
+        }
+
+        // Clear the notification flag after 5 seconds (in case user unchecks and rechecks)
+        setTimeout(() => {
+          notifiedCheckboxes.delete(checkboxId);
+        }, 5000);
+      }
+    };
+
+    // Get text associated with a checkbox (label, nearby text, etc.)
+    function getCheckboxAssociatedText(checkbox) {
+      let text = "";
+
+      // Check for associated label via 'for' attribute
+      if (checkbox.id) {
+        const label = document.querySelector(`label[for="${checkbox.id}"]`);
+        if (label) {
+          text += " " + label.textContent;
+        }
+      }
+
+      // Check for parent label element
+      const parentLabel = checkbox.closest("label");
+      if (parentLabel) {
+        text += " " + parentLabel.textContent;
+      }
+
+      // Check for nearby text in parent container
+      const parent = checkbox.parentElement;
+      if (parent) {
+        text += " " + parent.textContent;
+      }
+
+      // Check grandparent too (for nested structures)
+      const grandparent = parent?.parentElement;
+      if (grandparent) {
+        // Only get direct text, not too much
+        const grandparentText = grandparent.textContent || "";
+        if (grandparentText.length < 500) {
+          text += " " + grandparentText;
+        }
+      }
+
+      // Also check for aria-label
+      if (checkbox.getAttribute("aria-label")) {
+        text += " " + checkbox.getAttribute("aria-label");
+      }
+
+      return text.trim();
+    }
+
+    // Listen for checkbox changes
+    document.addEventListener(
+      "change",
+      (event) => {
+        if (event.target.type === "checkbox") {
+          console.log(
+            "[Privacy Parser] Checkbox change detected:",
+            event.target.id
+          );
+          handleCheckboxChange(event);
+        }
+      },
+      true
+    );
+
+    // Also listen for clicks on labels (for custom checkbox implementations)
+    document.addEventListener(
+      "click",
+      (event) => {
+        const target = event.target;
+
+        // Check if clicked on a label or inside a label
+        const label = target.closest("label");
+        if (label) {
+          // Find the associated checkbox
+          let checkbox = null;
+
+          // Check for 'for' attribute
+          if (label.htmlFor) {
+            checkbox = document.getElementById(label.htmlFor);
+          }
+
+          // Check for checkbox inside the label
+          if (!checkbox) {
+            checkbox = label.querySelector('input[type="checkbox"]');
+          }
+
+          if (checkbox) {
+            console.log(
+              "[Privacy Parser] Label click detected for checkbox:",
+              checkbox.id
+            );
+            // Small delay to let the checkbox state update
+            setTimeout(() => {
+              if (checkbox.checked) {
+                handleCheckboxChange({ target: checkbox });
+              }
+            }, 50);
+          }
+        }
+
+        // Also check if clicked directly on a checkbox
+        if (target.type === "checkbox") {
+          console.log("[Privacy Parser] Direct checkbox click:", target.id);
+          setTimeout(() => {
+            if (target.checked) {
+              handleCheckboxChange({ target: target });
+            }
+          }, 50);
+        }
+      },
+      true
+    );
+
+    console.log(
+      "[Privacy Parser] Agreement button and checkbox detection enabled"
+    );
   }
 
   // Handle messages from service worker and side panel
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('[Privacy Parser] Received message:', message.type);
+    console.log("[Privacy Parser] Received message:", message.type);
 
     switch (message.type) {
-      case 'GET_POLICY_CONTENT':
+      case "GET_POLICY_CONTENT":
         handleGetContent(sendResponse);
         return true; // Keep channel open for async response
 
-      case 'HIGHLIGHT_CLAUSE':
+      case "HIGHLIGHT_CLAUSE":
         handleHighlightClause(message);
         sendResponse({ success: true });
         break;
 
-      case 'CLEAR_HIGHLIGHTS':
+      case "CLEAR_HIGHLIGHTS":
         highlighter.clearAllHighlights();
         sendResponse({ success: true });
         break;
 
-      case 'CHECK_POLICY':
+      case "CHECK_POLICY":
         const detection = detector.detect();
         sendResponse(detection);
         break;
 
-      case 'SHOW_OVERLAY':
+      case "SHOW_OVERLAY":
         overlay.show(message.confidence || 0.8);
         sendResponse({ success: true });
         break;
 
       default:
-        sendResponse({ error: 'Unknown message type' });
+        sendResponse({ error: "Unknown message type" });
     }
   });
 
@@ -80,12 +438,12 @@
         content: extractedContent.textContent,
         title: extractedContent.title,
         url: window.location.href,
-        method: extractedContent.method
+        method: extractedContent.method,
       });
     } catch (error) {
       sendResponse({
         success: false,
-        error: error.message
+        error: error.message,
       });
     }
   }
@@ -96,26 +454,28 @@
     if (quote) {
       highlighter.highlightClause(quote, {
         scrollIntoView: true,
-        duration: 5000
+        duration: 5000,
       });
     }
   }
 
   // Watch for dynamic content changes (for SPAs)
-  const observer = new MutationObserver(debounce(() => {
-    // Re-run detection if significant DOM changes occur
-    if (!overlay.isVisible) {
-      const result = detector.detect();
-      if (result.isPolicy && result.confidence > 0.7) {
-        overlay.showMinimalIndicator();
+  const observer = new MutationObserver(
+    debounce(() => {
+      // Re-run detection if significant DOM changes occur
+      if (!overlay.isVisible) {
+        const result = detector.detect();
+        if (result.isPolicy && result.confidence > 0.7) {
+          overlay.showMinimalIndicator();
+        }
       }
-    }
-  }, 2000));
+    }, 2000)
+  );
 
   // Observe body for major changes
   observer.observe(document.body, {
     childList: true,
-    subtree: true
+    subtree: true,
   });
 
   // Utility: Debounce function
@@ -134,10 +494,15 @@
   // Run initial detection with a small delay to ensure page is stable
   setTimeout(runDetection, 500);
 
+  // Always set up agreement button detection (for cookie banners, modals, etc.)
+  // even if the page isn't a dedicated policy page
+  setTimeout(() => {
+    setupAgreementButtonDetection();
+  }, 1000);
+
   // Notify service worker that content script is ready
   chrome.runtime.sendMessage({
-    type: 'CONTENT_SCRIPT_READY',
-    url: window.location.href
+    type: "CONTENT_SCRIPT_READY",
+    url: window.location.href,
   });
-
 })();

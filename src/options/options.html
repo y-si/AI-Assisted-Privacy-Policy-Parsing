@@ -1,94 +1,105 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Privacy Policy Parser - Settings</title>
-  <link rel="stylesheet" href="options.css">
-</head>
-<body>
-  <div class="container">
-    <header>
-      <div class="logo">&#128274;</div>
-      <h1>Privacy Policy Parser</h1>
-      <p>Configure your extension settings</p>
-    </header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Privacy Policy Helper Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="logo">&#128274;</div>
+        <h1>AI Privacy Policy Helper</h1>
+      </header>
 
-    <main>
-      <section class="settings-section">
-        <h2>API Configuration</h2>
+      <main>
+        <section class="settings-section">
+          <h2>API Configuration</h2>
 
-        <div class="form-group">
-          <label for="api-key">OpenAI API Key</label>
-          <div class="input-wrapper">
-            <input
-              type="password"
-              id="api-key"
-              placeholder="sk-..."
-              autocomplete="off"
+          <div class="form-group">
+            <label for="api-key">OpenAI API Key</label>
+            <div class="input-wrapper">
+              <input
+                type="password"
+                id="api-key"
+                placeholder="sk-..."
+                autocomplete="off"
+              />
+              <button
+                type="button"
+                id="toggle-visibility"
+                class="btn-icon"
+                title="Toggle visibility"
+              >
+                &#128065;
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>API Status</label>
+            <div id="api-status" class="status-indicator">
+              <span class="status-dot"></span>
+              <span class="status-text">Not configured</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h2>Detection Settings</h2>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="auto-detect" checked />
+              <span>Automatically detect privacy policies</span>
+            </label>
+            <p class="help-text">
+              Show an overlay when a privacy policy is detected on a page.
+            </p>
+          </div>
+
+          <div class="form-group">
+            <label for="confidence-threshold"
+              >Detection Confidence Threshold</label
             >
-            <button type="button" id="toggle-visibility" class="btn-icon" title="Toggle visibility">
-              &#128065;
-            </button>
+            <div class="range-wrapper">
+              <input
+                type="range"
+                id="confidence-threshold"
+                min="40"
+                max="90"
+                value="60"
+              />
+              <span id="threshold-value">60%</span>
+            </div>
+            <p class="help-text">
+              Higher values mean fewer false positives but might miss some
+              policies.
+            </p>
           </div>
-          <p class="help-text">
-            Your API key is stored locally and never sent anywhere except to OpenAI's servers.
-            <a href="https://platform.openai.com/api-keys" target="_blank">Get your API key</a>
+        </section>
+
+        <section class="settings-section">
+          <h2>About</h2>
+          <p class="about-text">
+            AI Privacy Policy Helper helps you understand privacy policies and
+            terms of service by providing AI-generated summaries and
+            highlighting key risks.
           </p>
+          <p class="credits">
+            Built for CS 1050 by Brian Lin, Jackson Moody, Sein Yun
+          </p>
+        </section>
+
+        <div class="actions">
+          <button id="save-btn" class="btn btn-primary">Save Settings</button>
         </div>
 
-        <div class="form-group">
-          <label>API Status</label>
-          <div id="api-status" class="status-indicator">
-            <span class="status-dot"></span>
-            <span class="status-text">Not configured</span>
-          </div>
-        </div>
-      </section>
+        <div id="message" class="message hidden"></div>
+      </main>
+    </div>
 
-      <section class="settings-section">
-        <h2>Detection Settings</h2>
-
-        <div class="form-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="auto-detect" checked>
-            <span>Automatically detect privacy policies</span>
-          </label>
-          <p class="help-text">Show an overlay when a privacy policy is detected on a page.</p>
-        </div>
-
-        <div class="form-group">
-          <label for="confidence-threshold">Detection Confidence Threshold</label>
-          <div class="range-wrapper">
-            <input type="range" id="confidence-threshold" min="40" max="90" value="60">
-            <span id="threshold-value">60%</span>
-          </div>
-          <p class="help-text">Higher values mean fewer false positives but might miss some policies.</p>
-        </div>
-      </section>
-
-      <section class="settings-section">
-        <h2>About</h2>
-        <p class="about-text">
-          AI Privacy Policy Parser helps you understand privacy policies and terms of service
-          by providing AI-generated summaries and highlighting key risks.
-        </p>
-        <p class="version">Version 1.0.0</p>
-        <p class="credits">
-          Built for CS 1050 - Privacy, Technology, and the Law<br>
-          Harvard University
-        </p>
-      </section>
-
-      <div class="actions">
-        <button id="save-btn" class="btn btn-primary">Save Settings</button>
-        <button id="test-btn" class="btn btn-secondary">Test API Connection</button>
-      </div>
-
-      <div id="message" class="message hidden"></div>
-    </main>
-  </div>
-
-  <script src="options.js"></script>
-</body>
+    <script src="options.js"></script>
+  </body>
 </html>
