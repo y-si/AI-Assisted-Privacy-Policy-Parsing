@@ -68,6 +68,27 @@
     /i acknowledge/i,
   ];
 
+  // Patterns for detecting implicit agreement text (like on Yelp signup)
+  const IMPLICIT_AGREEMENT_PATTERNS = [
+    /by continuing,?\s*(you\s+)?agree\s+to/i,
+    /by signing up,?\s*(you\s+)?agree\s+to/i,
+    /by clicking,?\s*(you\s+)?agree\s+to/i,
+    /by creating an account,?\s*(you\s+)?agree\s+to/i,
+    /by registering,?\s*(you\s+)?agree\s+to/i,
+    /by using this,?\s*(you\s+)?agree\s+to/i,
+    /by accessing,?\s*(you\s+)?agree\s+to/i,
+    /by proceeding,?\s*(you\s+)?agree\s+to/i,
+    /by submitting,?\s*(you\s+)?agree\s+to/i,
+    /clicking .* (means|indicates) you agree/i,
+    /continuing (means|indicates) you agree/i,
+    /you agree to our/i,
+    /you acknowledge .* (terms|privacy|policy)/i,
+    /acknowledge (and|&) agree/i,
+  ];
+
+  // Track if we've already shown the implicit agreement notification
+  let implicitAgreementNotified = false;
+
   // Run detection
   async function runDetection() {
     const result = detector.detect();
@@ -106,6 +127,120 @@
       // Set up agreement button detection for this page
       setupAgreementButtonDetection();
     }
+
+    // Also check for implicit agreement text (like "By continuing, you agree to...")
+    checkForImplicitAgreement();
+  }
+
+  // Check for implicit agreement text on the page
+  function checkForImplicitAgreement() {
+    if (implicitAgreementNotified) return;
+
+    // Get all text content from the page
+    const bodyText = document.body.innerText;
+
+    // Check each pattern
+    for (const pattern of IMPLICIT_AGREEMENT_PATTERNS) {
+      if (pattern.test(bodyText)) {
+        console.log("[Privacy Parser] Found implicit agreement text:", pattern);
+        
+        // Find the element containing this text
+        const element = findElementWithText(pattern);
+        if (element) {
+          implicitAgreementNotified = true;
+          
+          // Show the agreement notification
+          overlay.showAgreementNotification("By continuing, you agree to Terms/Privacy Policy");
+          
+          // Notify service worker
+          chrome.runtime.sendMessage({
+            type: "POLICY_AGREEMENT_CLICKED",
+            buttonText: "Implicit agreement detected",
+            url: window.location.href,
+          }).catch(() => {});
+          
+          // Set up detection for continue/signup buttons near this text
+          setupImplicitAgreementButtonDetection(element);
+        }
+        break;
+      }
+    }
+  }
+
+  // Find the DOM element containing text matching the pattern
+  function findElementWithText(pattern) {
+    // Look for common containers that might have agreement text
+    const selectors = [
+      'p', 'span', 'div', 'label', 'small', 'footer',
+      '[class*="terms"]', '[class*="agreement"]', '[class*="legal"]',
+      '[class*="consent"]', '[class*="policy"]'
+    ];
+
+    for (const selector of selectors) {
+      const elements = document.querySelectorAll(selector);
+      for (const el of elements) {
+        const text = el.textContent || '';
+        if (pattern.test(text) && text.length < 500) {
+          return el;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Set up detection for buttons that would trigger implicit agreement
+  function setupImplicitAgreementButtonDetection(agreementElement) {
+    // Find buttons that are likely to be "continue" or "sign up" buttons
+    const continueButtonPatterns = [
+      /continue/i,
+      /sign up/i,
+      /sign in/i,
+      /log in/i,
+      /login/i,
+      /create account/i,
+      /register/i,
+      /get started/i,
+      /join/i,
+      /submit/i,
+      /next/i,
+    ];
+
+    // Find the parent container
+    const container = agreementElement.closest('form, [role="dialog"], .modal, [class*="modal"], [class*="signup"], [class*="login"], [class*="register"], section, main') || document.body;
+
+    // Look for buttons in the same container
+    const buttons = container.querySelectorAll('button, [role="button"], input[type="submit"], a[class*="btn"], a[class*="button"]');
+    
+    buttons.forEach(button => {
+      const buttonText = (button.textContent || button.value || '').trim();
+      
+      for (const pattern of continueButtonPatterns) {
+        if (pattern.test(buttonText)) {
+          console.log("[Privacy Parser] Found continue button:", buttonText);
+          
+          // Add a click listener to warn the user
+          button.addEventListener('click', async (event) => {
+            console.log("[Privacy Parser] Continue button clicked (implicit agreement):", buttonText);
+            
+            // Show warning overlay
+            overlay.showAgreementNotification(`Clicking "${buttonText}" agrees to Terms/Privacy`);
+            
+            // Notify service worker
+            try {
+              await chrome.runtime.sendMessage({
+                type: "POLICY_AGREEMENT_CLICKED",
+                buttonText: buttonText,
+                url: window.location.href,
+              });
+            } catch (error) {
+              console.log("[Privacy Parser] Could not notify:", error.message);
+            }
+          }, { capture: true, once: true });
+          
+          break;
+        }
+      }
+    });
   }
 
   // Detect and monitor "I agree" / "Accept" buttons
@@ -469,6 +604,11 @@
           overlay.showMinimalIndicator();
         }
       }
+      
+      // Also check for implicit agreement text that might have loaded dynamically
+      if (!implicitAgreementNotified) {
+        checkForImplicitAgreement();
+      }
     }, 2000)
   );
 
@@ -499,6 +639,14 @@
   setTimeout(() => {
     setupAgreementButtonDetection();
   }, 1000);
+
+  // Check for implicit agreement text (like "By continuing, you agree to...")
+  // This runs separately to catch signup/login pages that aren't policy pages
+  setTimeout(() => {
+    if (!implicitAgreementNotified) {
+      checkForImplicitAgreement();
+    }
+  }, 1500);
 
   // Notify service worker that content script is ready
   chrome.runtime.sendMessage({
