@@ -16,9 +16,6 @@ function setupEventListeners() {
   // Save button
   document.getElementById('save-btn').addEventListener('click', saveSettings);
 
-  // Test button
-  document.getElementById('test-btn').addEventListener('click', testApiConnection);
-
   // Confidence threshold slider
   const slider = document.getElementById('confidence-threshold');
   const valueDisplay = document.getElementById('threshold-value');
@@ -105,11 +102,6 @@ async function testApiConnection() {
     showMessage('Please enter an API key first', 'error');
     return;
   }
-
-  const testBtn = document.getElementById('test-btn');
-  testBtn.disabled = true;
-  testBtn.textContent = 'Testing...';
-  updateApiStatus('warning', 'Testing...');
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
