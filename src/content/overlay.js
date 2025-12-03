@@ -477,6 +477,532 @@ class PolicyOverlay {
     }, 15000);
   }
 
+  // Show notification for cookie popup with policy links
+  showCookiePopupNotification(policyLinks, darkPatterns) {
+    // Don't show if already showing something
+    const existing = document.getElementById(this.overlayId + "-cookie");
+    if (existing) return;
+
+    const host = document.createElement("div");
+    host.id = this.overlayId + "-cookie";
+
+    const shadow = host.attachShadow({ mode: "closed" });
+
+    const hasDarkPatterns = darkPatterns && darkPatterns.length > 0;
+    const hasLinks = policyLinks && policyLinks.length > 0;
+
+    // Build policy link buttons
+    const policyButtons = hasLinks
+      ? policyLinks.slice(0, 3).map(link => {
+          const icon = link.type === 'privacy' ? '🔒' : link.type === 'terms' ? '📜' : '🍪';
+          return `<button class="policy-btn" data-url="${link.url}" data-type="${link.type}">
+            ${icon} Analyze ${link.text}
+          </button>`;
+        }).join('')
+      : '';
+
+    // Dark pattern summary
+    const darkPatternSummary = hasDarkPatterns
+      ? `<div class="dark-pattern-alert">
+          <span class="alert-icon">⚠️</span>
+          <span>${darkPatterns.length} dark pattern${darkPatterns.length > 1 ? 's' : ''} detected</span>
+          <button class="view-patterns-btn">View</button>
+        </div>`
+      : '';
+
+    shadow.innerHTML = `
+      <style>
+        * {
+          box-sizing: border-box;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .overlay-banner {
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          background: #1e40af;
+          color: white;
+          padding: 16px 20px;
+          border-radius: 12px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+          z-index: 2147483647;
+          max-width: 400px;
+          animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+
+        .overlay-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .overlay-icon {
+          width: 36px;
+          height: 36px;
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+        }
+
+        .overlay-title {
+          font-size: 15px;
+          font-weight: 600;
+          margin: 0;
+        }
+
+        .overlay-subtitle {
+          font-size: 12px;
+          opacity: 0.9;
+          margin: 0;
+        }
+
+        .overlay-body {
+          font-size: 13px;
+          line-height: 1.5;
+          margin-bottom: 14px;
+          opacity: 0.95;
+        }
+
+        .dark-pattern-alert {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: rgba(239, 68, 68, 0.3);
+          padding: 8px 10px;
+          border-radius: 6px;
+          margin-bottom: 12px;
+          font-size: 12px;
+        }
+
+        .alert-icon {
+          font-size: 14px;
+        }
+
+        .view-patterns-btn {
+          margin-left: auto;
+          background: rgba(255, 255, 255, 0.2);
+          border: none;
+          color: white;
+          padding: 4px 10px;
+          border-radius: 4px;
+          font-size: 11px;
+          cursor: pointer;
+        }
+
+        .view-patterns-btn:hover {
+          background: rgba(255, 255, 255, 0.3);
+        }
+
+        .policy-buttons {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+
+        .policy-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          background: rgba(255, 255, 255, 0.15);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 8px;
+          color: white;
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.2s;
+          text-align: left;
+        }
+
+        .policy-btn:hover {
+          background: rgba(255, 255, 255, 0.25);
+          transform: translateX(4px);
+        }
+
+        .overlay-actions {
+          display: flex;
+          gap: 8px;
+        }
+
+        .btn {
+          flex: 1;
+          padding: 10px 16px;
+          border: none;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+        }
+
+        .btn-secondary {
+          background: rgba(255, 255, 255, 0.2);
+          color: white;
+        }
+
+        .btn-secondary:hover {
+          background: rgba(255, 255, 255, 0.3);
+        }
+
+        .close-btn {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          background: none;
+          border: none;
+          color: white;
+          font-size: 18px;
+          cursor: pointer;
+          opacity: 0.7;
+          padding: 4px;
+          line-height: 1;
+        }
+
+        .close-btn:hover {
+          opacity: 1;
+        }
+
+        .hint-text {
+          font-size: 11px;
+          opacity: 0.7;
+          text-align: center;
+          margin-top: 10px;
+        }
+      </style>
+
+      <div class="overlay-banner">
+        <button class="close-btn" aria-label="Close">&times;</button>
+
+        <div class="overlay-header">
+          <div class="overlay-icon">🍪</div>
+          <div>
+            <h3 class="overlay-title">Cookie Consent Detected</h3>
+            <p class="overlay-subtitle">Review before accepting</p>
+          </div>
+        </div>
+
+        ${darkPatternSummary}
+
+        ${hasLinks ? `
+          <div class="overlay-body">
+            <strong>Understand what you're agreeing to:</strong>
+          </div>
+          <div class="policy-buttons">
+            ${policyButtons}
+          </div>
+        ` : `
+          <div class="overlay-body">
+            This site is asking for cookie consent. No policy links were found in the banner.
+          </div>
+        `}
+
+        <div class="overlay-actions">
+          <button class="btn btn-secondary" id="dismiss-btn">Dismiss</button>
+        </div>
+
+        <p class="hint-text">Click a policy to analyze it before accepting cookies</p>
+      </div>
+    `;
+
+    // Event listeners
+    shadow.querySelector(".close-btn").addEventListener("click", () => {
+      host.remove();
+    });
+
+    shadow.getElementById("dismiss-btn").addEventListener("click", () => {
+      host.remove();
+    });
+
+    // Policy button clicks - analyze the linked policy
+    shadow.querySelectorAll(".policy-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const url = btn.dataset.url;
+        const type = btn.dataset.type;
+
+        try {
+          // Open side panel and request analysis of the external URL
+          await chrome.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" });
+          await chrome.runtime.sendMessage({
+            type: "ANALYZE_EXTERNAL_POLICY",
+            url: url,
+            policyType: type
+          });
+        } catch (e) {
+          console.log("Could not analyze policy:", e);
+        }
+
+        host.remove();
+      });
+    });
+
+    // View dark patterns button
+    const viewPatternsBtn = shadow.querySelector(".view-patterns-btn");
+    if (viewPatternsBtn) {
+      viewPatternsBtn.addEventListener("click", async () => {
+        try {
+          await chrome.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" });
+          await chrome.runtime.sendMessage({
+            type: "SHOW_DARK_PATTERNS",
+            patterns: darkPatterns
+          });
+        } catch (e) {
+          console.log("Could not show dark patterns:", e);
+        }
+        host.remove();
+      });
+    }
+
+    document.body.appendChild(host);
+
+    // Auto-hide after 30 seconds (longer since user needs to make decisions)
+    setTimeout(() => {
+      if (host.parentElement) {
+        host.remove();
+      }
+    }, 30000);
+  }
+
+  // Show a warning about detected dark patterns
+  showDarkPatternWarning(darkPatterns) {
+    // Don't show if already showing something
+    const existing = document.getElementById(this.overlayId + "-darkpattern");
+    if (existing) return;
+
+    const host = document.createElement("div");
+    host.id = this.overlayId + "-darkpattern";
+
+    const shadow = host.attachShadow({ mode: "closed" });
+
+    const highSeverity = darkPatterns.filter(p => p.severity === 'high');
+    const patternList = darkPatterns.slice(0, 3).map(p =>
+      `<div class="pattern-item ${p.severity}">
+        <span class="pattern-icon">${p.severity === 'high' ? '🚨' : '⚠️'}</span>
+        <div class="pattern-text">
+          <strong>${p.name}</strong>
+          <span>${p.details || p.description}</span>
+        </div>
+      </div>`
+    ).join('');
+
+    shadow.innerHTML = `
+      <style>
+        * {
+          box-sizing: border-box;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .overlay-banner {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: ${highSeverity.length > 0 ? '#dc2626' : '#d97706'};
+          color: white;
+          padding: 16px 20px;
+          border-radius: 12px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+          z-index: 2147483647;
+          max-width: 400px;
+          animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+          from { transform: translateY(-100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+
+        .overlay-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .overlay-icon {
+          width: 36px;
+          height: 36px;
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 20px;
+        }
+
+        .overlay-title {
+          font-size: 15px;
+          font-weight: 600;
+          margin: 0;
+        }
+
+        .overlay-subtitle {
+          font-size: 12px;
+          opacity: 0.9;
+          margin: 0;
+        }
+
+        .pattern-list {
+          margin-bottom: 12px;
+        }
+
+        .pattern-item {
+          display: flex;
+          gap: 8px;
+          padding: 8px;
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 6px;
+          margin-bottom: 6px;
+          align-items: flex-start;
+        }
+
+        .pattern-item:last-child {
+          margin-bottom: 0;
+        }
+
+        .pattern-item.high {
+          background: rgba(255, 255, 255, 0.2);
+        }
+
+        .pattern-icon {
+          font-size: 14px;
+          flex-shrink: 0;
+        }
+
+        .pattern-text {
+          font-size: 12px;
+          line-height: 1.3;
+        }
+
+        .pattern-text strong {
+          display: block;
+          margin-bottom: 2px;
+        }
+
+        .pattern-text span {
+          opacity: 0.9;
+        }
+
+        .overlay-footer {
+          font-size: 11px;
+          opacity: 0.8;
+          text-align: center;
+          margin-top: 8px;
+        }
+
+        .close-btn {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          background: none;
+          border: none;
+          color: white;
+          font-size: 18px;
+          cursor: pointer;
+          opacity: 0.7;
+          padding: 4px;
+          line-height: 1;
+        }
+
+        .close-btn:hover {
+          opacity: 1;
+        }
+
+        .overlay-actions {
+          display: flex;
+          gap: 8px;
+          margin-top: 12px;
+        }
+
+        .btn {
+          flex: 1;
+          padding: 8px 12px;
+          border: none;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          text-align: center;
+        }
+
+        .btn-primary {
+          background: white;
+          color: ${highSeverity.length > 0 ? '#dc2626' : '#d97706'};
+        }
+
+        .btn-secondary {
+          background: rgba(255, 255, 255, 0.2);
+          color: white;
+        }
+      </style>
+
+      <div class="overlay-banner">
+        <button class="close-btn" aria-label="Close">&times;</button>
+
+        <div class="overlay-header">
+          <div class="overlay-icon">🕵️</div>
+          <div>
+            <h3 class="overlay-title">Dark Patterns Detected!</h3>
+            <p class="overlay-subtitle">${darkPatterns.length} manipulative design${darkPatterns.length > 1 ? 's' : ''} found</p>
+          </div>
+        </div>
+
+        <div class="pattern-list">
+          ${patternList}
+        </div>
+
+        <div class="overlay-actions">
+          <button class="btn btn-primary" id="learn-more-btn">Learn More</button>
+          <button class="btn btn-secondary" id="dismiss-btn">Dismiss</button>
+        </div>
+
+        <div class="overlay-footer">
+          This cookie banner uses tricks to make you accept tracking
+        </div>
+      </div>
+    `;
+
+    // Event listeners
+    shadow.querySelector(".close-btn").addEventListener("click", () => {
+      host.remove();
+    });
+
+    shadow.getElementById("dismiss-btn").addEventListener("click", () => {
+      host.remove();
+    });
+
+    shadow.getElementById("learn-more-btn").addEventListener("click", async () => {
+      // Open side panel with dark pattern info
+      try {
+        await chrome.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" });
+        await chrome.runtime.sendMessage({
+          type: "SHOW_DARK_PATTERNS",
+          patterns: darkPatterns
+        });
+      } catch (e) {
+        console.log("Could not open side panel:", e);
+      }
+      host.remove();
+    });
+
+    document.body.appendChild(host);
+
+    // Auto-hide after 20 seconds
+    setTimeout(() => {
+      if (host.parentElement) {
+        host.remove();
+      }
+    }, 20000);
+  }
+
   // Show a minimal persistent indicator
   showMinimalIndicator() {
     const indicator = document.createElement("div");

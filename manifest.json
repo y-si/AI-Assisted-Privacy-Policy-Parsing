@@ -26,6 +26,7 @@
         "src/lib/Readability.js",
         "src/lib/purify.min.js",
         "src/content/detector.js",
+        "src/content/enhanced-detector.js",
         "src/content/extractor.js",
         "src/content/overlay.js",
         "src/content/highlighter.js",

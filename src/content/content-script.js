@@ -11,12 +11,16 @@
 
   // Initialize components
   const detector = new PolicyDetector();
+  const enhancedDetector = new EnhancedDetector();
   const extractor = new PolicyExtractor();
   const overlay = new PolicyOverlay();
   const highlighter = new ClauseHighlighter();
 
   // Store extracted content for later use
   let extractedContent = null;
+
+  // Store enhanced detection results
+  let enhancedDetectionResults = null;
 
   // Track if agreement button detection has been set up
   let agreementDetectionEnabled = false;
@@ -130,6 +134,63 @@
 
     // Also check for implicit agreement text (like "By continuing, you agree to...")
     checkForImplicitAgreement();
+
+    // Run enhanced detection for cookie popups and dark patterns
+    runEnhancedDetection();
+  }
+
+  // Run enhanced detection for cookie popups, dark patterns, etc.
+  async function runEnhancedDetection() {
+    enhancedDetectionResults = enhancedDetector.runFullDetection();
+
+    console.log("[Privacy Parser] Enhanced detection results:", enhancedDetectionResults);
+
+    // If cookie popup detected, show appropriate notification
+    if (enhancedDetectionResults.cookiePopup.detected) {
+      const darkPatterns = enhancedDetectionResults.cookiePopup.darkPatterns;
+      const policyLinks = enhancedDetectionResults.cookiePopup.policyLinks;
+
+      console.log("[Privacy Parser] Cookie popup detected with links:", policyLinks);
+
+      // Show the cookie popup notification with policy links
+      if (policyLinks.length > 0 || darkPatterns.length > 0) {
+        overlay.showCookiePopupNotification(policyLinks, darkPatterns);
+      }
+
+      // Notify service worker about cookie popup detection
+      try {
+        await chrome.runtime.sendMessage({
+          type: "COOKIE_POPUP_DETECTED",
+          hasDarkPatterns: darkPatterns.length > 0,
+          darkPatternCount: darkPatterns.length,
+          patterns: darkPatterns.map(p => ({ id: p.id, name: p.name, severity: p.severity })),
+          policyLinks: policyLinks.map(l => ({ url: l.url, text: l.text, type: l.type })),
+          url: window.location.href,
+        });
+      } catch (error) {
+        console.log("[Privacy Parser] Could not notify about cookie popup:", error.message);
+      }
+    }
+
+    // Check for signup agreements
+    if (enhancedDetectionResults.signupAgreements.length > 0) {
+      console.log("[Privacy Parser] Signup agreements found:", enhancedDetectionResults.signupAgreements);
+
+      // Notify about implicit agreements
+      const implicitAgreements = enhancedDetectionResults.signupAgreements.filter(a => a.isImplicit);
+      if (implicitAgreements.length > 0) {
+        try {
+          await chrome.runtime.sendMessage({
+            type: "SIGNUP_AGREEMENT_DETECTED",
+            isImplicit: true,
+            count: implicitAgreements.length,
+            url: window.location.href,
+          });
+        } catch (error) {
+          console.log("[Privacy Parser] Could not notify about signup agreement:", error.message);
+        }
+      }
+    }
   }
 
   // Check for implicit agreement text on the page
@@ -554,6 +615,22 @@
       case "SHOW_OVERLAY":
         overlay.show(message.confidence || 0.8);
         sendResponse({ success: true });
+        break;
+
+      case "GET_ENHANCED_DETECTION":
+        // Return enhanced detection results
+        if (!enhancedDetectionResults) {
+          enhancedDetectionResults = enhancedDetector.runFullDetection();
+        }
+        sendResponse({
+          success: true,
+          results: {
+            hasCookiePopup: enhancedDetectionResults.cookiePopup.detected,
+            darkPatterns: enhancedDetectionResults.cookiePopup.darkPatterns || [],
+            signupAgreements: enhancedDetectionResults.signupAgreements.length,
+            summary: enhancedDetectionResults.summary
+          }
+        });
         break;
 
       default:
