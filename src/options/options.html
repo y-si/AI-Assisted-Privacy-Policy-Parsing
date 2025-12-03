@@ -81,6 +81,37 @@
         </section>
 
         <section class="settings-section">
+          <h2>Accessibility</h2>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="default-simplified" />
+              <span>Use simplified language by default</span>
+            </label>
+            <p class="help-text">
+              Automatically show policy summaries in easy-to-understand language (5th grade reading level).
+            </p>
+          </div>
+
+          <div class="form-group">
+            <label for="tts-rate">Text-to-Speech Speed</label>
+            <div class="range-wrapper">
+              <input
+                type="range"
+                id="tts-rate"
+                min="50"
+                max="150"
+                value="90"
+              />
+              <span id="tts-rate-value">0.9x</span>
+            </div>
+            <p class="help-text">
+              Adjust the speed of the read-aloud feature.
+            </p>
+          </div>
+        </section>
+
+        <section class="settings-section">
           <h2>About</h2>
           <p class="about-text">
             AI Privacy Policy Helper helps you understand privacy policies and

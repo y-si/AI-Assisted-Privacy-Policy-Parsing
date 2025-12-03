@@ -20,6 +20,26 @@
       <button id="settings-btn" class="icon-btn" title="Settings">&#9881;</button>
     </header>
 
+    <!-- Accessibility Toolbar -->
+    <div id="accessibility-toolbar">
+      <button id="simplify-btn" class="a11y-btn" title="Simplify Language">
+        <span class="a11y-icon">Aa</span>
+        <span class="a11y-label">Simple</span>
+      </button>
+      <button id="keypoints-btn" class="a11y-btn" title="Key Points Only">
+        <span class="a11y-icon">&#9733;</span>
+        <span class="a11y-label">Key Points</span>
+      </button>
+      <button id="tts-btn" class="a11y-btn" title="Read Aloud">
+        <span class="a11y-icon">&#128266;</span>
+        <span class="a11y-label">Listen</span>
+      </button>
+      <button id="tts-stop-btn" class="a11y-btn hidden" title="Stop Reading">
+        <span class="a11y-icon">&#9724;</span>
+        <span class="a11y-label">Stop</span>
+      </button>
+    </div>
+
     <!-- Main Content -->
     <main id="content">
       <!-- Initial State -->
@@ -36,7 +56,8 @@
       <section id="loading-state" class="section hidden">
         <div class="loading-container">
           <div class="loading-spinner"></div>
-          <p>Analyzing privacy policy...</p>
+          <p class="loading-title">Analyzing privacy policy...</p>
+          <p class="loading-subtitle"></p>
           <div id="streaming-preview" class="streaming-preview"></div>
         </div>
       </section>
@@ -95,6 +116,58 @@
             <span class="toggle-icon">&#9660;</span>
           </h2>
           <div id="user-rights-content" class="section-content collapsed"></div>
+        </div>
+      </section>
+
+      <!-- Key Points State -->
+      <section id="keypoints-state" class="section hidden">
+        <!-- Overall Rating (same as results) -->
+        <div id="keypoints-rating-card" class="rating-card">
+          <div class="rating-badge" id="keypoints-rating-badge">MODERATE</div>
+          <p id="keypoints-rating-explanation">Loading...</p>
+        </div>
+
+        <!-- Most Important Points -->
+        <div class="result-section">
+          <h2 class="section-title">
+            <span class="section-icon">&#9733;</span>
+            Most Important Points
+          </h2>
+          <div id="important-points-content" class="section-content"></div>
+        </div>
+
+        <!-- Unusual / Standout Points -->
+        <div class="result-section">
+          <h2 class="section-title">
+            <span class="section-icon">&#128161;</span>
+            Unusual or Standout Clauses
+          </h2>
+          <div id="standout-points-content" class="section-content"></div>
+        </div>
+
+        <!-- Back to Full Analysis -->
+        <div class="keypoints-footer">
+          <button id="back-to-full-btn" class="btn btn-secondary">View Full Analysis</button>
+        </div>
+      </section>
+
+      <!-- Dark Patterns State -->
+      <section id="darkpatterns-state" class="section hidden">
+        <div class="darkpatterns-header">
+          <div class="darkpatterns-icon">🕵️</div>
+          <h2>Dark Patterns Detected</h2>
+          <p>This website uses manipulative design tactics</p>
+        </div>
+
+        <div id="darkpatterns-list" class="darkpatterns-list"></div>
+
+        <div class="darkpatterns-info">
+          <h3>What are Dark Patterns?</h3>
+          <p>Dark patterns are deceptive design choices that trick users into doing things they didn't intend to, like accepting all cookies or sharing more data than necessary.</p>
+        </div>
+
+        <div class="darkpatterns-footer">
+          <button id="back-from-darkpatterns-btn" class="btn btn-secondary">Back</button>
         </div>
       </section>
 

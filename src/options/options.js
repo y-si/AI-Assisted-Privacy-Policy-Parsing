@@ -24,6 +24,14 @@ function setupEventListeners() {
     valueDisplay.textContent = slider.value + '%';
   });
 
+  // TTS rate slider
+  const ttsSlider = document.getElementById('tts-rate');
+  const ttsValueDisplay = document.getElementById('tts-rate-value');
+
+  ttsSlider.addEventListener('input', () => {
+    ttsValueDisplay.textContent = (ttsSlider.value / 100).toFixed(1) + 'x';
+  });
+
   // Auto-detect checkbox
   document.getElementById('auto-detect').addEventListener('change', (e) => {
     // Settings will be saved when user clicks save
@@ -40,7 +48,9 @@ async function loadSettings() {
     const result = await chrome.storage.local.get([
       'openaiApiKey',
       'autoDetect',
-      'confidenceThreshold'
+      'confidenceThreshold',
+      'defaultSimplified',
+      'ttsRate'
     ]);
 
     // API Key
@@ -58,6 +68,15 @@ async function loadSettings() {
     document.getElementById('confidence-threshold').value = threshold;
     document.getElementById('threshold-value').textContent = threshold + '%';
 
+    // Accessibility: Default simplified mode
+    const defaultSimplified = result.defaultSimplified === true; // Default to false
+    document.getElementById('default-simplified').checked = defaultSimplified;
+
+    // Accessibility: TTS rate
+    const ttsRate = result.ttsRate || 90;
+    document.getElementById('tts-rate').value = ttsRate;
+    document.getElementById('tts-rate-value').textContent = (ttsRate / 100).toFixed(1) + 'x';
+
   } catch (error) {
     console.error('Error loading settings:', error);
     showMessage('Error loading settings', 'error');
@@ -68,6 +87,8 @@ async function saveSettings() {
   const apiKey = document.getElementById('api-key').value.trim();
   const autoDetect = document.getElementById('auto-detect').checked;
   const confidenceThreshold = parseInt(document.getElementById('confidence-threshold').value);
+  const defaultSimplified = document.getElementById('default-simplified').checked;
+  const ttsRate = parseInt(document.getElementById('tts-rate').value);
 
   // Validate API key format (OpenAI keys start with "sk-")
   if (apiKey && !apiKey.startsWith('sk-')) {
@@ -79,7 +100,9 @@ async function saveSettings() {
     await chrome.storage.local.set({
       openaiApiKey: apiKey,
       autoDetect: autoDetect,
-      confidenceThreshold: confidenceThreshold
+      confidenceThreshold: confidenceThreshold,
+      defaultSimplified: defaultSimplified,
+      ttsRate: ttsRate
     });
 
     if (apiKey) {

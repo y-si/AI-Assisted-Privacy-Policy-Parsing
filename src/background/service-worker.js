@@ -132,6 +132,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true });
       break;
 
+    case "SIMPLIFY_ANALYSIS":
+      handleSimplifyAnalysis(message, sendResponse);
+      return true;
+
+    case "EXTRACT_KEYPOINTS":
+      handleExtractKeyPoints(message, sendResponse);
+      return true;
+
+    case "ANALYZE_EXTERNAL_POLICY":
+      handleAnalyzeExternalPolicy(message, sender, sendResponse);
+      return true;
+
     default:
       sendResponse({ error: "Unknown message type" });
   }
@@ -615,6 +627,203 @@ async function handleChatMessage(message, sendResponse) {
   }
 }
 
+// Handle simplify analysis request
+async function handleSimplifyAnalysis(message, sendResponse) {
+  const { tabId, analysis } = message;
+
+  try {
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+      sendResponse({ error: "API key not configured" });
+      chrome.runtime
+        .sendMessage({
+          type: "SIMPLIFY_ERROR",
+          tabId,
+          error: "API key not configured",
+        })
+        .catch(() => {});
+      return;
+    }
+
+    sendResponse({ status: "processing" });
+
+    const systemPrompt = `You are an expert at making complex legal language accessible to everyone. Your task is to simplify a privacy policy analysis so that it can be understood by a 5th grader (10-11 years old).
+
+Rules for simplification:
+1. Use simple, everyday words (no legal jargon)
+2. Keep sentences short (under 15 words when possible)
+3. Use concrete examples when helpful
+4. Explain what things mean for the reader personally
+5. Keep the same JSON structure as the input
+6. Maintain accuracy while simplifying
+
+Return ONLY a valid JSON object with the same structure as the input, but with simplified text.`;
+
+    const userPrompt = `Please simplify this privacy policy analysis for a 5th grade reading level:
+
+${JSON.stringify(analysis, null, 2)}
+
+Remember: Return ONLY the JSON object with simplified text, keeping the exact same structure.`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        max_tokens: 4096,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || "";
+
+    // Parse the simplified analysis
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const simplifiedAnalysis = JSON.parse(jsonMatch[0]);
+      chrome.runtime
+        .sendMessage({
+          type: "SIMPLIFY_COMPLETE",
+          tabId,
+          simplifiedAnalysis,
+        })
+        .catch(() => {});
+    } else {
+      throw new Error("Could not parse simplified analysis");
+    }
+  } catch (error) {
+    console.error("[Service Worker] Simplify error:", error);
+    chrome.runtime
+      .sendMessage({
+        type: "SIMPLIFY_ERROR",
+        tabId,
+        error: error.message,
+      })
+      .catch(() => {});
+  }
+}
+
+// Handle key points extraction request
+async function handleExtractKeyPoints(message, sendResponse) {
+  const { tabId, analysis } = message;
+
+  try {
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+      sendResponse({ error: "API key not configured" });
+      chrome.runtime
+        .sendMessage({
+          type: "KEYPOINTS_ERROR",
+          tabId,
+          error: "API key not configured",
+        })
+        .catch(() => {});
+      return;
+    }
+
+    sendResponse({ status: "processing" });
+
+    const systemPrompt = `You are an expert at distilling complex privacy policies into their most essential points. Your task is to extract two types of information from a privacy policy analysis:
+
+1. **Most Important Points**: The 3-5 things every user MUST know before accepting this policy. Focus on:
+   - What data is collected
+   - How data is used/shared
+   - Key rights users have or don't have
+   - Important limitations or conditions
+
+2. **Unusual or Standout Clauses**: 2-4 things that are unusual, surprising, or different from typical privacy policies. These could be:
+   - Unusually broad data collection
+   - Surprising third-party sharing
+   - Uncommon restrictions on user rights
+   - Particularly good or bad practices
+   - Anything that would make someone say "wait, really?"
+
+Return a JSON object in this exact format:
+{
+  "importantPoints": [
+    {
+      "title": "Brief title (5-8 words)",
+      "description": "One sentence explanation of why this matters",
+      "category": "data_collection|data_sharing|data_retention|user_rights|security|cookies|third_party"
+    }
+  ],
+  "standoutPoints": [
+    {
+      "title": "Brief title (5-8 words)",
+      "description": "One sentence explanation of what's unusual about this",
+      "isConcerning": true/false
+    }
+  ]
+}
+
+Be concise. Each description should be ONE sentence maximum. Focus on what actually matters to users.`;
+
+    const userPrompt = `Extract the key points and standout clauses from this privacy policy analysis:
+
+${JSON.stringify(analysis, null, 2)}
+
+Remember: Return ONLY the JSON object. Be very concise - one sentence per description maximum.`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        max_tokens: 2048,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || "";
+
+    // Parse the key points
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const keyPoints = JSON.parse(jsonMatch[0]);
+      chrome.runtime
+        .sendMessage({
+          type: "KEYPOINTS_COMPLETE",
+          tabId,
+          keyPoints,
+        })
+        .catch(() => {});
+    } else {
+      throw new Error("Could not parse key points");
+    }
+  } catch (error) {
+    console.error("[Service Worker] Key points error:", error);
+    chrome.runtime
+      .sendMessage({
+        type: "KEYPOINTS_ERROR",
+        tabId,
+        error: error.message,
+      })
+      .catch(() => {});
+  }
+}
+
 // Handle get analysis request
 async function handleGetAnalysis(message, sendResponse) {
   const { tabId } = message;
@@ -625,6 +834,125 @@ async function handleGetAnalysis(message, sendResponse) {
   } else {
     sendResponse({ success: false, error: "No analysis available" });
   }
+}
+
+// Handle analyzing an external policy URL (from cookie banner links)
+async function handleAnalyzeExternalPolicy(message, sender, sendResponse) {
+  const { url, policyType } = message;
+  const tabId = sender.tab?.id;
+
+  if (!tabId) {
+    sendResponse({ error: "No tab ID" });
+    return;
+  }
+
+  console.log("[Service Worker] Analyzing external policy:", url, policyType);
+
+  try {
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+      sendResponse({ error: "API key not configured" });
+      chrome.runtime.sendMessage({
+        type: "ANALYSIS_ERROR",
+        tabId,
+        error: "API key not configured. Please set your OpenAI API key in the extension settings.",
+      }).catch(() => {});
+      return;
+    }
+
+    sendResponse({ status: "fetching" });
+
+    // Notify side panel that we're fetching the external policy
+    chrome.runtime.sendMessage({
+      type: "EXTERNAL_POLICY_LOADING",
+      tabId,
+      url,
+      policyType,
+    }).catch(() => {});
+
+    // Fetch the external policy page content
+    let policyContent;
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; PrivacyPolicyHelper/1.0)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch policy: HTTP ${response.status}`);
+      }
+
+      const html = await response.text();
+
+      // Extract text content from HTML
+      policyContent = extractTextFromHtml(html);
+
+      if (!policyContent || policyContent.length < 200) {
+        throw new Error("Could not extract sufficient content from the policy page");
+      }
+    } catch (fetchError) {
+      console.error("[Service Worker] Fetch error:", fetchError);
+      chrome.runtime.sendMessage({
+        type: "ANALYSIS_ERROR",
+        tabId,
+        error: `Could not fetch the policy page: ${fetchError.message}. The site may block external requests.`,
+      }).catch(() => {});
+      return;
+    }
+
+    // Truncate if too long
+    const maxLength = 50000;
+    if (policyContent.length > maxLength) {
+      policyContent = policyContent.substring(0, maxLength) + "\n[Content truncated due to length]";
+    }
+
+    // Now analyze with streaming
+    analysisInProgress.set(tabId, true);
+
+    chrome.runtime.sendMessage({
+      type: "ANALYSIS_STARTED",
+      tabId,
+      url,
+      isExternalPolicy: true,
+      policyType,
+    }).catch(() => {});
+
+    // Use the same analysis logic as regular policies
+    await analyzeWithStreaming(tabId, policyContent, url);
+
+  } catch (error) {
+    console.error("[Service Worker] External policy analysis error:", error);
+    chrome.runtime.sendMessage({
+      type: "ANALYSIS_ERROR",
+      tabId,
+      error: error.message,
+    }).catch(() => {});
+  }
+}
+
+// Extract text content from HTML
+function extractTextFromHtml(html) {
+  // Remove script and style tags
+  let text = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ');
+  text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ');
+
+  // Remove HTML tags
+  text = text.replace(/<[^>]+>/g, ' ');
+
+  // Decode HTML entities
+  text = text.replace(/&nbsp;/g, ' ');
+  text = text.replace(/&amp;/g, '&');
+  text = text.replace(/&lt;/g, '<');
+  text = text.replace(/&gt;/g, '>');
+  text = text.replace(/&quot;/g, '"');
+  text = text.replace(/&#39;/g, "'");
+
+  // Clean up whitespace
+  text = text.replace(/\s+/g, ' ').trim();
+
+  return text;
 }
 
 // Get API key from storage

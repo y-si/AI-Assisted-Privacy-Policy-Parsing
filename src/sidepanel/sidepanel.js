@@ -5,11 +5,23 @@ let currentTabId = null;
 let isAnalyzing = false;
 let streamingContent = "";
 
+// Accessibility state
+let isSimplifiedMode = false;
+let isKeyPointsMode = false;
+let originalAnalysis = null;
+let simplifiedAnalysis = null;
+let keyPointsData = null;
+let ttsUtterance = null;
+let isSpeaking = false;
+
 // Initialize
 document.addEventListener("DOMContentLoaded", async () => {
   // Get current tab
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   currentTabId = tab?.id;
+
+  // Load accessibility preferences
+  await loadAccessibilityPreferences();
 
   setupEventListeners();
   setupMessageListeners();
@@ -17,6 +29,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Check if there's an analysis in progress or existing analysis
   await checkAnalysisStatus();
 });
+
+// Load accessibility preferences from storage
+async function loadAccessibilityPreferences() {
+  try {
+    const result = await chrome.storage.local.get(['defaultSimplified', 'ttsRate']);
+
+    // If default simplified is enabled, mark the button as active
+    if (result.defaultSimplified) {
+      isSimplifiedMode = true;
+      document.getElementById("simplify-btn").classList.add("active");
+    }
+
+    // Store TTS rate for later use
+    window.ttsRate = (result.ttsRate || 90) / 100;
+  } catch (error) {
+    console.error("Error loading accessibility preferences:", error);
+  }
+}
 
 // Check if analysis is in progress or already complete
 async function checkAnalysisStatus() {
@@ -93,6 +123,22 @@ function setupEventListeners() {
       content.classList.toggle("collapsed");
     });
   });
+
+  // Accessibility: Simplified language toggle
+  document.getElementById("simplify-btn").addEventListener("click", toggleSimplifiedMode);
+
+  // Accessibility: Key points mode
+  document.getElementById("keypoints-btn").addEventListener("click", toggleKeyPointsMode);
+  document.getElementById("back-to-full-btn").addEventListener("click", exitKeyPointsMode);
+
+  // Dark patterns back button
+  document.getElementById("back-from-darkpatterns-btn").addEventListener("click", () => {
+    showState("initial");
+  });
+
+  // Accessibility: Text-to-speech
+  document.getElementById("tts-btn").addEventListener("click", startTextToSpeech);
+  document.getElementById("tts-stop-btn").addEventListener("click", stopTextToSpeech);
 }
 
 function setupMessageListeners() {
@@ -139,6 +185,27 @@ function setupMessageListeners() {
         break;
       case "CHAT_COMPLETE":
         handleChatComplete(message.fullResponse);
+        break;
+      case "SIMPLIFY_COMPLETE":
+        handleSimplifyComplete(message.simplifiedAnalysis);
+        break;
+      case "SIMPLIFY_ERROR":
+        handleSimplifyError(message.error);
+        break;
+      case "KEYPOINTS_COMPLETE":
+        handleKeyPointsComplete(message.keyPoints);
+        break;
+      case "KEYPOINTS_ERROR":
+        handleKeyPointsError(message.error);
+        break;
+      case "SHOW_DARK_PATTERNS":
+        displayDarkPatterns(message.patterns);
+        break;
+      case "COOKIE_POPUP_DETECTED":
+        handleCookiePopupDetected(message);
+        break;
+      case "EXTERNAL_POLICY_LOADING":
+        handleExternalPolicyLoading(message);
         break;
     }
   });
@@ -280,6 +347,29 @@ function handleStreamComplete(fullResponse) {
 
 function displayAnalysis(analysis) {
   showState("results");
+
+  // Store the original analysis for toggling
+  if (!simplifiedAnalysis || analysis !== simplifiedAnalysis) {
+    // This is the original analysis
+    if (!originalAnalysis) {
+      originalAnalysis = analysis;
+
+      // If default simplified mode is on and we haven't fetched simplified yet, request it
+      if (isSimplifiedMode && !simplifiedAnalysis) {
+        // Auto-request simplified version
+        const simplifyBtn = document.getElementById("simplify-btn");
+        simplifyBtn.classList.add("loading");
+        chrome.runtime.sendMessage({
+          type: "SIMPLIFY_ANALYSIS",
+          tabId: currentTabId,
+          analysis: originalAnalysis,
+        }).catch((error) => {
+          console.error("Error requesting simplified analysis:", error);
+          simplifyBtn.classList.remove("loading");
+        });
+      }
+    }
+  }
 
   // Overall rating
   const ratingBadge = document.getElementById("rating-badge");
@@ -458,6 +548,12 @@ function showState(state) {
     .getElementById("results-state")
     .classList.toggle("hidden", state !== "results");
   document
+    .getElementById("keypoints-state")
+    .classList.toggle("hidden", state !== "keypoints");
+  document
+    .getElementById("darkpatterns-state")
+    .classList.toggle("hidden", state !== "darkpatterns");
+  document
     .getElementById("error-state")
     .classList.toggle("hidden", state !== "error");
 }
@@ -551,4 +647,337 @@ function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+// ============================================
+// Accessibility Features
+// ============================================
+
+// Toggle simplified language mode
+async function toggleSimplifiedMode() {
+  const simplifyBtn = document.getElementById("simplify-btn");
+
+  if (!originalAnalysis) {
+    // No analysis to simplify
+    return;
+  }
+
+  if (isSimplifiedMode) {
+    // Switch back to original
+    isSimplifiedMode = false;
+    simplifyBtn.classList.remove("active");
+    displayAnalysis(originalAnalysis);
+  } else {
+    // Switch to simplified
+    if (simplifiedAnalysis) {
+      // Already have simplified version cached
+      isSimplifiedMode = true;
+      simplifyBtn.classList.add("active");
+      displayAnalysis(simplifiedAnalysis);
+    } else {
+      // Request simplified version from service worker
+      simplifyBtn.classList.add("loading");
+      try {
+        await chrome.runtime.sendMessage({
+          type: "SIMPLIFY_ANALYSIS",
+          tabId: currentTabId,
+          analysis: originalAnalysis,
+        });
+      } catch (error) {
+        console.error("Error requesting simplified analysis:", error);
+        simplifyBtn.classList.remove("loading");
+      }
+    }
+  }
+}
+
+// Handle simplified analysis response
+function handleSimplifyComplete(simplified) {
+  const simplifyBtn = document.getElementById("simplify-btn");
+  simplifyBtn.classList.remove("loading");
+  simplifyBtn.classList.add("active");
+
+  simplifiedAnalysis = simplified;
+  isSimplifiedMode = true;
+  displayAnalysis(simplified);
+}
+
+// Handle simplification error
+function handleSimplifyError(error) {
+  const simplifyBtn = document.getElementById("simplify-btn");
+  simplifyBtn.classList.remove("loading");
+  console.error("Simplification error:", error);
+}
+
+// Text-to-Speech functionality
+function startTextToSpeech() {
+  if (!originalAnalysis && !simplifiedAnalysis) {
+    return;
+  }
+
+  const analysis = isSimplifiedMode ? simplifiedAnalysis : originalAnalysis;
+  if (!analysis) return;
+
+  // Build the text to read
+  const textParts = [];
+
+  // Rating
+  if (analysis.overallRating) {
+    textParts.push(`Overall rating: ${analysis.overallRating}.`);
+    if (analysis.ratingExplanation) {
+      textParts.push(analysis.ratingExplanation);
+    }
+  }
+
+  // Summary
+  if (analysis.summary) {
+    textParts.push("Summary:");
+    textParts.push(analysis.summary);
+  }
+
+  // Key risks
+  if (analysis.risks && analysis.risks.length > 0) {
+    textParts.push("Key risks:");
+    analysis.risks.forEach((risk, index) => {
+      textParts.push(`Risk ${index + 1}: ${risk.title}. ${risk.description}`);
+    });
+  }
+
+  const fullText = textParts.join(" ");
+
+  // Cancel any ongoing speech
+  if (isSpeaking) {
+    stopTextToSpeech();
+  }
+
+  // Create and start utterance
+  ttsUtterance = new SpeechSynthesisUtterance(fullText);
+  ttsUtterance.rate = window.ttsRate || 0.9; // Use saved rate or default
+  ttsUtterance.pitch = 1;
+
+  ttsUtterance.onstart = () => {
+    isSpeaking = true;
+    document.getElementById("tts-btn").classList.add("hidden");
+    document.getElementById("tts-stop-btn").classList.remove("hidden");
+  };
+
+  ttsUtterance.onend = () => {
+    isSpeaking = false;
+    document.getElementById("tts-btn").classList.remove("hidden");
+    document.getElementById("tts-stop-btn").classList.add("hidden");
+  };
+
+  ttsUtterance.onerror = () => {
+    isSpeaking = false;
+    document.getElementById("tts-btn").classList.remove("hidden");
+    document.getElementById("tts-stop-btn").classList.add("hidden");
+  };
+
+  window.speechSynthesis.speak(ttsUtterance);
+}
+
+function stopTextToSpeech() {
+  window.speechSynthesis.cancel();
+  isSpeaking = false;
+  document.getElementById("tts-btn").classList.remove("hidden");
+  document.getElementById("tts-stop-btn").classList.add("hidden");
+}
+
+// ============================================
+// Key Points Mode
+// ============================================
+
+async function toggleKeyPointsMode() {
+  const keypointsBtn = document.getElementById("keypoints-btn");
+
+  if (!originalAnalysis) {
+    return;
+  }
+
+  if (isKeyPointsMode) {
+    // Switch back to full analysis
+    exitKeyPointsMode();
+  } else {
+    // Switch to key points mode
+    if (keyPointsData) {
+      // Already have key points cached
+      displayKeyPoints(keyPointsData);
+    } else {
+      // Request key points from service worker
+      keypointsBtn.classList.add("loading");
+      try {
+        await chrome.runtime.sendMessage({
+          type: "EXTRACT_KEYPOINTS",
+          tabId: currentTabId,
+          analysis: originalAnalysis,
+        });
+      } catch (error) {
+        console.error("Error requesting key points:", error);
+        keypointsBtn.classList.remove("loading");
+      }
+    }
+  }
+}
+
+function exitKeyPointsMode() {
+  isKeyPointsMode = false;
+  document.getElementById("keypoints-btn").classList.remove("active");
+  showState("results");
+}
+
+function handleKeyPointsComplete(keyPoints) {
+  const keypointsBtn = document.getElementById("keypoints-btn");
+  keypointsBtn.classList.remove("loading");
+  keypointsBtn.classList.add("active");
+
+  keyPointsData = keyPoints;
+  displayKeyPoints(keyPoints);
+}
+
+function handleKeyPointsError(error) {
+  const keypointsBtn = document.getElementById("keypoints-btn");
+  keypointsBtn.classList.remove("loading");
+  console.error("Key points extraction error:", error);
+}
+
+function displayKeyPoints(keyPoints) {
+  isKeyPointsMode = true;
+  showState("keypoints");
+
+  // Copy rating from original analysis
+  const rating = (originalAnalysis.overallRating || "MODERATE").toLowerCase();
+  const ratingBadge = document.getElementById("keypoints-rating-badge");
+  ratingBadge.textContent = originalAnalysis.overallRating || "MODERATE";
+  ratingBadge.className = "rating-badge " + rating;
+  document.getElementById("keypoints-rating-explanation").textContent =
+    originalAnalysis.ratingExplanation || "";
+
+  // Display important points
+  const importantContent = document.getElementById("important-points-content");
+  if (keyPoints.importantPoints && keyPoints.importantPoints.length > 0) {
+    importantContent.innerHTML = keyPoints.importantPoints
+      .map(
+        (point) => `
+        <div class="keypoint-item important">
+          <span class="keypoint-icon">${getPointIcon(point.category)}</span>
+          <div class="keypoint-content">
+            <div class="keypoint-title">${escapeHtml(point.title)}</div>
+            <div class="keypoint-description">${escapeHtml(point.description)}</div>
+          </div>
+        </div>
+      `
+      )
+      .join("");
+  } else {
+    importantContent.innerHTML = "<p>No key points identified.</p>";
+  }
+
+  // Display standout/unusual points
+  const standoutContent = document.getElementById("standout-points-content");
+  if (keyPoints.standoutPoints && keyPoints.standoutPoints.length > 0) {
+    standoutContent.innerHTML = keyPoints.standoutPoints
+      .map(
+        (point) => `
+        <div class="keypoint-item ${point.isConcerning ? 'concern' : 'unusual'}">
+          <span class="keypoint-icon">${point.isConcerning ? '⚠️' : '💡'}</span>
+          <div class="keypoint-content">
+            <div class="keypoint-title">${escapeHtml(point.title)}</div>
+            <div class="keypoint-description">${escapeHtml(point.description)}</div>
+          </div>
+        </div>
+      `
+      )
+      .join("");
+  } else {
+    standoutContent.innerHTML = "<p>No unusual clauses identified.</p>";
+  }
+}
+
+function getPointIcon(category) {
+  const icons = {
+    data_collection: "📊",
+    data_sharing: "🔗",
+    data_retention: "💾",
+    user_rights: "✅",
+    security: "🔒",
+    cookies: "🍪",
+    third_party: "👥",
+    default: "📋"
+  };
+  return icons[category] || icons.default;
+}
+
+// ============================================
+// Dark Pattern Detection UI
+// ============================================
+
+function displayDarkPatterns(patterns) {
+  showState("darkpatterns");
+
+  const listContainer = document.getElementById("darkpatterns-list");
+
+  if (!patterns || patterns.length === 0) {
+    listContainer.innerHTML = `<p style="text-align: center; color: var(--text-secondary);">No dark patterns detected on this page.</p>`;
+    return;
+  }
+
+  listContainer.innerHTML = patterns
+    .map(
+      (pattern) => `
+      <div class="darkpattern-item ${pattern.severity}">
+        <span class="darkpattern-icon">${pattern.severity === 'high' ? '🚨' : '⚠️'}</span>
+        <div class="darkpattern-content">
+          <div class="darkpattern-name">${escapeHtml(pattern.name)}</div>
+          <div class="darkpattern-description">${escapeHtml(pattern.details || pattern.description)}</div>
+          <span class="darkpattern-severity ${pattern.severity}">${pattern.severity} severity</span>
+        </div>
+      </div>
+    `
+    )
+    .join("");
+}
+
+function handleCookiePopupDetected(message) {
+  console.log("[Side Panel] Cookie popup detected:", message);
+
+  // If dark patterns were found, we could show an alert in the UI
+  if (message.hasDarkPatterns && message.darkPatternCount > 0) {
+    // Store the patterns for later display
+    window.detectedDarkPatterns = message.patterns;
+
+    // Could add a notification badge or alert here
+    console.log(`[Side Panel] ${message.darkPatternCount} dark patterns detected`);
+  }
+
+  // Store policy links for later use
+  if (message.policyLinks && message.policyLinks.length > 0) {
+    window.detectedPolicyLinks = message.policyLinks;
+  }
+}
+
+function handleExternalPolicyLoading(message) {
+  console.log("[Side Panel] Loading external policy:", message);
+
+  // Show loading state with info about what we're fetching
+  showState("loading");
+
+  const policyTypeLabels = {
+    privacy: 'Privacy Policy',
+    terms: 'Terms of Service',
+    cookie: 'Cookie Policy',
+    policy: 'Policy'
+  };
+
+  const typeLabel = policyTypeLabels[message.policyType] || 'Policy';
+
+  // Update the loading message to show what we're fetching
+  const loadingSection = document.getElementById("loading-state");
+  if (loadingSection) {
+    const existingMessage = loadingSection.querySelector(".loading-subtitle");
+    if (existingMessage) {
+      existingMessage.textContent = `Fetching ${typeLabel} from external page...`;
+    }
+  }
+
+  updateStatus(`Fetching ${typeLabel}...`);
 }
