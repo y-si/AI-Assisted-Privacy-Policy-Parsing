@@ -74,6 +74,7 @@
 
   // Patterns for detecting implicit agreement text (like on Yelp signup)
   const IMPLICIT_AGREEMENT_PATTERNS = [
+    // "agree to" patterns
     /by continuing,?\s*(you\s+)?agree\s+to/i,
     /by signing up,?\s*(you\s+)?agree\s+to/i,
     /by clicking,?\s*(you\s+)?agree\s+to/i,
@@ -83,9 +84,21 @@
     /by accessing,?\s*(you\s+)?agree\s+to/i,
     /by proceeding,?\s*(you\s+)?agree\s+to/i,
     /by submitting,?\s*(you\s+)?agree\s+to/i,
+    // "accept" patterns (like Credit Karma: "By creating an account, you accept...")
+    /by continuing,?\s*(you\s+)?accept/i,
+    /by signing up,?\s*(you\s+)?accept/i,
+    /by clicking,?\s*(you\s+)?accept/i,
+    /by creating an account,?\s*(you\s+)?accept/i,
+    /by registering,?\s*(you\s+)?accept/i,
+    /by using this,?\s*(you\s+)?accept/i,
+    /by proceeding,?\s*(you\s+)?accept/i,
+    /by submitting,?\s*(you\s+)?accept/i,
+    // General patterns
     /clicking .* (means|indicates) you agree/i,
     /continuing (means|indicates) you agree/i,
     /you agree to our/i,
+    /you accept our/i,
+    /you accept .+('s|the) (terms|privacy)/i,
     /you acknowledge .* (terms|privacy|policy)/i,
     /acknowledge (and|&) agree/i,
   ];
