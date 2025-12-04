@@ -909,7 +909,16 @@ async function handleAnalyzeExternalPolicy(message, sender, sendResponse) {
     }
 
     // Now analyze with streaming
-    analysisInProgress.set(tabId, true);
+    analysisInProgress.add(tabId);
+
+    // Generate a title based on policy type
+    const policyTypeLabels = {
+      privacy: 'Privacy Policy',
+      terms: 'Terms of Service',
+      cookie: 'Cookie Policy',
+      policy: 'Policy'
+    };
+    const title = policyTypeLabels[policyType] || 'External Policy';
 
     chrome.runtime.sendMessage({
       type: "ANALYSIS_STARTED",
@@ -920,7 +929,7 @@ async function handleAnalyzeExternalPolicy(message, sender, sendResponse) {
     }).catch(() => {});
 
     // Use the same analysis logic as regular policies
-    await analyzeWithStreaming(tabId, policyContent, url);
+    await analyzeWithOpenAI(tabId, policyContent, title, url);
 
   } catch (error) {
     console.error("[Service Worker] External policy analysis error:", error);
