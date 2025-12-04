@@ -272,7 +272,7 @@ class PolicyOverlay {
   }
 
   // Show a notification when user clicks an agreement button
-  showAgreementNotification(buttonText) {
+  showAgreementNotification(buttonText, policyLinks = []) {
     // Remove any existing overlay first
     this.hide();
 
@@ -291,6 +291,18 @@ class PolicyOverlay {
     // Attach shadow DOM for style isolation
     const shadow = host.attachShadow({ mode: "closed" });
 
+    const hasLinks = policyLinks && policyLinks.length > 0;
+
+    // Build policy link buttons if we have links
+    const policyButtons = hasLinks
+      ? policyLinks.slice(0, 3).map(link => {
+          const icon = link.type === 'privacy' ? '🔒' : link.type === 'terms' ? '📜' : '🍪';
+          return `<button class="policy-btn" data-url="${link.url}" data-type="${link.type}">
+            ${icon} Analyze ${link.text}
+          </button>`;
+        }).join('')
+      : '';
+
     shadow.innerHTML = `
       <style>
         * {
@@ -308,7 +320,7 @@ class PolicyOverlay {
           border-radius: 12px;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
           z-index: 2147483647;
-          max-width: 380px;
+          max-width: 400px;
           animation: slideIn 0.3s ease-out;
         }
 
@@ -356,8 +368,35 @@ class PolicyOverlay {
         .overlay-body {
           font-size: 14px;
           line-height: 1.5;
-          margin-bottom: 16px;
+          margin-bottom: 14px;
           opacity: 0.95;
+        }
+
+        .policy-buttons {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+
+        .policy-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          background: rgba(255, 255, 255, 0.15);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 8px;
+          color: white;
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.2s;
+          text-align: left;
+        }
+
+        .policy-btn:hover {
+          background: rgba(255, 255, 255, 0.25);
+          transform: translateX(4px);
         }
 
         .overlay-actions {
@@ -435,28 +474,63 @@ class PolicyOverlay {
           <p>You're about to agree to a privacy policy/terms of service. Review the policy first to understand what data is collected and how it will be used.</p>
         </div>
 
-        <div class="overlay-actions">
-          <button class="btn btn-primary" id="review-btn">📋 Review Policy</button>
-          <button class="btn btn-secondary" id="dismiss-btn">Dismiss</button>
-        </div>
+        ${hasLinks ? `
+          <div class="policy-buttons">
+            ${policyButtons}
+          </div>
+          <div class="overlay-actions">
+            <button class="btn btn-secondary" id="dismiss-btn">Dismiss</button>
+          </div>
+          <p class="hint-text">Click a policy above to analyze it before agreeing</p>
+        ` : `
+          <div class="overlay-actions">
+            <button class="btn btn-primary" id="review-btn">📋 Review Current Page</button>
+            <button class="btn btn-secondary" id="dismiss-btn">Dismiss</button>
+          </div>
+        `}
       </div>
     `;
 
-    // Review button - opens side panel and starts analysis
-    shadow.getElementById("review-btn").addEventListener("click", async () => {
-      try {
-        await chrome.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" });
-      } catch (e) {
-        console.log("Could not open side panel:", e);
-      }
+    // Policy link button clicks - analyze the linked policy
+    shadow.querySelectorAll(".policy-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const url = btn.dataset.url;
+        const type = btn.dataset.type;
 
-      chrome.runtime.sendMessage({
-        type: "ANALYZE_POLICY",
-        url: window.location.href,
+        try {
+          // Open side panel and request analysis of the external URL
+          await chrome.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" });
+          await chrome.runtime.sendMessage({
+            type: "ANALYZE_EXTERNAL_POLICY",
+            url: url,
+            policyType: type
+          });
+        } catch (e) {
+          console.log("Could not analyze policy:", e);
+        }
+
+        host.remove();
       });
-
-      host.remove();
     });
+
+    // Review button (only shown if no policy links found) - opens side panel and starts analysis
+    const reviewBtn = shadow.getElementById("review-btn");
+    if (reviewBtn) {
+      reviewBtn.addEventListener("click", async () => {
+        try {
+          await chrome.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" });
+        } catch (e) {
+          console.log("Could not open side panel:", e);
+        }
+
+        chrome.runtime.sendMessage({
+          type: "ANALYZE_POLICY",
+          url: window.location.href,
+        });
+
+        host.remove();
+      });
+    }
 
     // Dismiss button
     shadow.getElementById("dismiss-btn").addEventListener("click", () => {
@@ -469,12 +543,12 @@ class PolicyOverlay {
 
     document.body.appendChild(host);
 
-    // Auto-hide after 15 seconds (longer since user needs to make a decision)
+    // Auto-hide after 20 seconds (longer since user needs to make a decision about which policy to analyze)
     setTimeout(() => {
       if (host.parentElement) {
         host.remove();
       }
-    }, 15000);
+    }, 20000);
   }
 
   // Show notification for cookie popup with policy links

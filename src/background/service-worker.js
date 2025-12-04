@@ -4,8 +4,11 @@
 // Store conversation history per tab
 const conversations = new Map();
 
-// Store analysis results per tab
+// Store analysis results per tab (includes the policy URL that was analyzed)
 const analysisResults = new Map();
+
+// Store the URL of the policy that was analyzed (may differ from tab URL for external policies)
+const analyzedPolicyUrls = new Map();
 
 // Store tabs that have been notified about policy detection
 const notifiedTabs = new Set();
@@ -65,6 +68,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
     case "CONTENT_SCRIPT_READY":
       handleContentScriptReady(sender.tab);
+      sendResponse({ success: true });
       break;
 
     case "POLICY_DETECTED":
@@ -144,14 +148,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleAnalyzeExternalPolicy(message, sender, sendResponse);
       return true;
 
+    case "GET_POLICY_URL":
+      // Return the URL of the policy that was analyzed for this tab
+      const policyUrl = analyzedPolicyUrls.get(message.tabId);
+      sendResponse({ success: !!policyUrl, url: policyUrl || null });
+      break;
+
+    case "OPEN_POLICY_WITH_HIGHLIGHT":
+      // Open the policy URL in a new tab and highlight a quote
+      handleOpenPolicyWithHighlight(message, sendResponse);
+      return true;
+
     default:
       sendResponse({ error: "Unknown message type" });
   }
 });
 
 // Handle content script ready
-function handleContentScriptReady(tab) {
+async function handleContentScriptReady(tab) {
   console.log("[Service Worker] Content script ready on tab:", tab.id, tab.url);
+
+  // Check if there's a pending highlight for this tab
+  const pendingQuote = pendingHighlights.get(tab.id);
+  if (pendingQuote) {
+    console.log("[Service Worker] Sending pending highlight to tab:", tab.id);
+
+    // Wait a moment for the page to fully render
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        type: "HIGHLIGHT_CLAUSE",
+        quote: pendingQuote,
+      });
+      console.log("[Service Worker] Pending highlight sent successfully");
+    } catch (error) {
+      console.log("[Service Worker] Could not send pending highlight:", error.message);
+    }
+
+    // Remove the pending highlight
+    pendingHighlights.delete(tab.id);
+  }
 }
 
 // Handle privacy policy detection - auto-open side panel
@@ -300,6 +337,9 @@ async function handleAnalyzePolicy(message, tab, sendResponse) {
       "[Service Worker] Got content, length:",
       contentResponse.content?.length
     );
+
+    // Store the URL being analyzed (same as tab URL for regular analysis)
+    analyzedPolicyUrls.set(tabId, contentResponse.url);
 
     // Start streaming analysis
     sendResponse({ status: "started", tabId });
@@ -911,6 +951,9 @@ async function handleAnalyzeExternalPolicy(message, sender, sendResponse) {
     // Now analyze with streaming
     analysisInProgress.add(tabId);
 
+    // Store the external URL being analyzed (different from tab URL)
+    analyzedPolicyUrls.set(tabId, url);
+
     // Generate a title based on policy type
     const policyTypeLabels = {
       privacy: 'Privacy Policy',
@@ -973,12 +1016,37 @@ async function getApiKey() {
   });
 }
 
+// Store pending highlights for new tabs (quote to highlight when page loads)
+const pendingHighlights = new Map();
+
+// Handle opening a policy URL in a new tab with a highlight
+async function handleOpenPolicyWithHighlight(message, sendResponse) {
+  const { url, quote } = message;
+
+  try {
+    // Create a new tab with the policy URL
+    const newTab = await chrome.tabs.create({ url: url });
+
+    // Store the pending highlight for this tab
+    if (quote) {
+      pendingHighlights.set(newTab.id, quote);
+    }
+
+    sendResponse({ success: true, tabId: newTab.id });
+  } catch (error) {
+    console.error("[Service Worker] Error opening policy with highlight:", error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
 // Clean up when tab is closed
 chrome.tabs.onRemoved.addListener((tabId) => {
   conversations.delete(tabId);
   analysisResults.delete(tabId);
+  analyzedPolicyUrls.delete(tabId);
   notifiedTabs.delete(tabId);
   analysisInProgress.delete(tabId);
+  pendingHighlights.delete(tabId);
 });
 
 // Also reset notification when tab navigates to a new page

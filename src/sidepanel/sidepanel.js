@@ -5,6 +5,9 @@ let currentTabId = null;
 let isAnalyzing = false;
 let streamingContent = "";
 
+// Track the URL of the policy that was analyzed (may differ from current tab URL for external policies)
+let analyzedPolicyUrl = null;
+
 // Accessibility state
 let isSimplifiedMode = false;
 let isKeyPointsMode = false;
@@ -65,6 +68,19 @@ async function checkAnalysisStatus() {
     }
 
     if (statusResponse.success && statusResponse.analysis) {
+      // Also get the policy URL that was analyzed
+      try {
+        const urlResponse = await chrome.runtime.sendMessage({
+          type: "GET_POLICY_URL",
+          tabId: currentTabId,
+        });
+        if (urlResponse.success && urlResponse.url) {
+          analyzedPolicyUrl = urlResponse.url;
+        }
+      } catch (e) {
+        console.log("Could not get policy URL:", e);
+      }
+
       // We have existing analysis - display it
       displayAnalysis(statusResponse.analysis);
       return;
@@ -164,6 +180,10 @@ function setupMessageListeners() {
         document.getElementById("streaming-preview").textContent = "";
         updateStatus("Analyzing...");
         isAnalyzing = true;
+        // Track the URL being analyzed (could be external policy URL)
+        if (message.url) {
+          analyzedPolicyUrl = message.url;
+        }
         break;
       case "STREAM_CHUNK":
         // If we receive chunks but aren't in loading state, switch to it
@@ -288,6 +308,19 @@ async function checkExistingAnalysis() {
     });
 
     if (response.success && response.analysis) {
+      // Also get the policy URL that was analyzed
+      try {
+        const urlResponse = await chrome.runtime.sendMessage({
+          type: "GET_POLICY_URL",
+          tabId: currentTabId,
+        });
+        if (urlResponse.success && urlResponse.url) {
+          analyzedPolicyUrl = urlResponse.url;
+        }
+      } catch (e) {
+        console.log("Could not get policy URL:", e);
+      }
+
       displayAnalysis(response.analysis);
     }
   } catch (error) {
@@ -303,6 +336,14 @@ async function startAnalysis() {
   streamingContent = "";
   document.getElementById("streaming-preview").textContent = "";
   updateStatus("Analyzing privacy policy...");
+
+  // Get the current tab URL as the policy URL (for regular analysis)
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    analyzedPolicyUrl = tab?.url || null;
+  } catch (e) {
+    console.log("Could not get current tab URL:", e);
+  }
 
   try {
     await chrome.runtime.sendMessage({
@@ -345,8 +386,19 @@ function handleStreamComplete(fullResponse) {
   }
 }
 
-function displayAnalysis(analysis) {
+async function displayAnalysis(analysis) {
   showState("results");
+
+  // Check if we need to mark quotes as external links
+  let isExternalPolicy = false;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (analyzedPolicyUrl && tab?.url && !urlsMatch(tab.url, analyzedPolicyUrl)) {
+      isExternalPolicy = true;
+    }
+  } catch (e) {
+    console.log("Could not determine if external policy:", e);
+  }
 
   // Store the original analysis for toggling
   if (!simplifiedAnalysis || analysis !== simplifiedAnalysis) {
@@ -370,6 +422,9 @@ function displayAnalysis(analysis) {
       }
     }
   }
+
+  // Helper to get quote class
+  const quoteClass = isExternalPolicy ? "external-link" : "";
 
   // Overall rating
   const ratingBadge = document.getElementById("rating-badge");
@@ -402,7 +457,7 @@ function displayAnalysis(analysis) {
         <p class="risk-description">${escapeHtml(risk.description || "")}</p>
         ${
           risk.quote
-            ? `<div class="risk-quote" data-quote="${escapeHtml(
+            ? `<div class="risk-quote ${quoteClass}" data-quote="${escapeHtml(
                 risk.quote
               )}">"${escapeHtml(risk.quote)}"</div>`
             : ""
@@ -435,7 +490,7 @@ function displayAnalysis(analysis) {
         <p class="data-description">${escapeHtml(item.description || "")}</p>
         ${
           item.quote
-            ? `<div class="data-quote" data-quote="${escapeHtml(
+            ? `<div class="data-quote ${quoteClass}" data-quote="${escapeHtml(
                 item.quote
               )}">"${escapeHtml(item.quote)}"</div>`
             : ""
@@ -466,7 +521,7 @@ function displayAnalysis(analysis) {
         <p class="data-description">${escapeHtml(item.purpose || "")}</p>
         ${
           item.quote
-            ? `<div class="data-quote" data-quote="${escapeHtml(
+            ? `<div class="data-quote ${quoteClass}" data-quote="${escapeHtml(
                 item.quote
               )}">"${escapeHtml(item.quote)}"</div>`
             : ""
@@ -496,7 +551,7 @@ function displayAnalysis(analysis) {
         <p class="data-description">${escapeHtml(item.description || "")}</p>
         ${
           item.quote
-            ? `<div class="data-quote" data-quote="${escapeHtml(
+            ? `<div class="data-quote ${quoteClass}" data-quote="${escapeHtml(
                 item.quote
               )}">"${escapeHtml(item.quote)}"</div>`
             : ""
@@ -633,12 +688,54 @@ function scrollChatToBottom() {
 
 async function highlightQuote(quote) {
   try {
-    await chrome.tabs.sendMessage(currentTabId, {
-      type: "HIGHLIGHT_CLAUSE",
-      quote: quote,
-    });
+    // Get the current tab's URL
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const currentUrl = tab?.url || "";
+
+    // Check if we have a policy URL and if we're on a different page
+    if (analyzedPolicyUrl && !urlsMatch(currentUrl, analyzedPolicyUrl)) {
+      // We're not on the policy page - open it in a new tab with the highlight
+      console.log("[Side Panel] Opening policy in new tab to highlight quote");
+      await chrome.runtime.sendMessage({
+        type: "OPEN_POLICY_WITH_HIGHLIGHT",
+        url: analyzedPolicyUrl,
+        quote: quote,
+      });
+    } else {
+      // We're on the policy page - highlight directly
+      await chrome.tabs.sendMessage(currentTabId, {
+        type: "HIGHLIGHT_CLAUSE",
+        quote: quote,
+      });
+    }
   } catch (error) {
     console.error("Failed to highlight:", error);
+    // If highlighting fails, try opening the policy in a new tab
+    if (analyzedPolicyUrl) {
+      try {
+        await chrome.runtime.sendMessage({
+          type: "OPEN_POLICY_WITH_HIGHLIGHT",
+          url: analyzedPolicyUrl,
+          quote: quote,
+        });
+      } catch (e) {
+        console.error("Failed to open policy in new tab:", e);
+      }
+    }
+  }
+}
+
+// Helper function to check if two URLs match (ignoring fragments and minor differences)
+function urlsMatch(url1, url2) {
+  if (!url1 || !url2) return false;
+  try {
+    const u1 = new URL(url1);
+    const u2 = new URL(url2);
+    // Compare origin and pathname (ignore hash/fragment and query params variations)
+    return u1.origin === u2.origin && u1.pathname === u2.pathname;
+  } catch {
+    // If URL parsing fails, do simple string comparison
+    return url1 === url2;
   }
 }
 

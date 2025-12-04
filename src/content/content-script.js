@@ -143,14 +143,20 @@
   async function runEnhancedDetection() {
     enhancedDetectionResults = enhancedDetector.runFullDetection();
 
-    console.log("[Privacy Parser] Enhanced detection results:", enhancedDetectionResults);
+    console.log(
+      "[Privacy Parser] Enhanced detection results:",
+      enhancedDetectionResults
+    );
 
     // If cookie popup detected, show appropriate notification
     if (enhancedDetectionResults.cookiePopup.detected) {
       const darkPatterns = enhancedDetectionResults.cookiePopup.darkPatterns;
       const policyLinks = enhancedDetectionResults.cookiePopup.policyLinks;
 
-      console.log("[Privacy Parser] Cookie popup detected with links:", policyLinks);
+      console.log(
+        "[Privacy Parser] Cookie popup detected with links:",
+        policyLinks
+      );
 
       // Show the cookie popup notification with policy links
       if (policyLinks.length > 0 || darkPatterns.length > 0) {
@@ -163,21 +169,36 @@
           type: "COOKIE_POPUP_DETECTED",
           hasDarkPatterns: darkPatterns.length > 0,
           darkPatternCount: darkPatterns.length,
-          patterns: darkPatterns.map(p => ({ id: p.id, name: p.name, severity: p.severity })),
-          policyLinks: policyLinks.map(l => ({ url: l.url, text: l.text, type: l.type })),
+          patterns: darkPatterns.map((p) => ({
+            id: p.id,
+            name: p.name,
+            severity: p.severity,
+          })),
+          policyLinks: policyLinks.map((l) => ({
+            url: l.url,
+            text: l.text,
+            type: l.type,
+          })),
           url: window.location.href,
         });
       } catch (error) {
-        console.log("[Privacy Parser] Could not notify about cookie popup:", error.message);
+        console.log(
+          "[Privacy Parser] Could not notify about cookie popup:",
+          error.message
+        );
       }
     }
 
     // Check for signup agreements
     if (enhancedDetectionResults.signupAgreements.length > 0) {
-      console.log("[Privacy Parser] Signup agreements found:", enhancedDetectionResults.signupAgreements);
+      console.log(
+        "[Privacy Parser] Signup agreements found:",
+        enhancedDetectionResults.signupAgreements
+      );
 
       // Notify about implicit agreements
-      const implicitAgreements = enhancedDetectionResults.signupAgreements.filter(a => a.isImplicit);
+      const implicitAgreements =
+        enhancedDetectionResults.signupAgreements.filter((a) => a.isImplicit);
       if (implicitAgreements.length > 0) {
         try {
           await chrome.runtime.sendMessage({
@@ -187,7 +208,10 @@
             url: window.location.href,
           });
         } catch (error) {
-          console.log("[Privacy Parser] Could not notify about signup agreement:", error.message);
+          console.log(
+            "[Privacy Parser] Could not notify about signup agreement:",
+            error.message
+          );
         }
       }
     }
@@ -204,22 +228,39 @@
     for (const pattern of IMPLICIT_AGREEMENT_PATTERNS) {
       if (pattern.test(bodyText)) {
         console.log("[Privacy Parser] Found implicit agreement text:", pattern);
-        
+
         // Find the element containing this text
         const element = findElementWithText(pattern);
         if (element) {
           implicitAgreementNotified = true;
-          
-          // Show the agreement notification
-          overlay.showAgreementNotification("By continuing, you agree to Terms/Privacy Policy");
-          
+
+          // Extract policy links from the element
+          const policyLinks = extractPolicyLinksFromElement(element);
+          console.log(
+            "[Privacy Parser] Found policy links in implicit agreement:",
+            policyLinks
+          );
+
+          // Show the agreement notification with policy links
+          overlay.showAgreementNotification(
+            "By continuing, you agree to Terms/Privacy Policy",
+            policyLinks
+          );
+
           // Notify service worker
-          chrome.runtime.sendMessage({
-            type: "POLICY_AGREEMENT_CLICKED",
-            buttonText: "Implicit agreement detected",
-            url: window.location.href,
-          }).catch(() => {});
-          
+          chrome.runtime
+            .sendMessage({
+              type: "POLICY_AGREEMENT_CLICKED",
+              buttonText: "Implicit agreement detected",
+              url: window.location.href,
+              policyLinks: policyLinks.map((l) => ({
+                url: l.url,
+                text: l.text,
+                type: l.type,
+              })),
+            })
+            .catch(() => {});
+
           // Set up detection for continue/signup buttons near this text
           setupImplicitAgreementButtonDetection(element);
         }
@@ -232,21 +273,135 @@
   function findElementWithText(pattern) {
     // Look for common containers that might have agreement text
     const selectors = [
-      'p', 'span', 'div', 'label', 'small', 'footer',
-      '[class*="terms"]', '[class*="agreement"]', '[class*="legal"]',
-      '[class*="consent"]', '[class*="policy"]'
+      "p",
+      "span",
+      "div",
+      "label",
+      "small",
+      "footer",
+      '[class*="terms"]',
+      '[class*="agreement"]',
+      '[class*="legal"]',
+      '[class*="consent"]',
+      '[class*="policy"]',
     ];
 
     for (const selector of selectors) {
       const elements = document.querySelectorAll(selector);
       for (const el of elements) {
-        const text = el.textContent || '';
+        const text = el.textContent || "";
         if (pattern.test(text) && text.length < 500) {
           return el;
         }
       }
     }
     return null;
+  }
+
+  // Extract policy links (privacy policy, terms of service) from an element and its ancestors
+  function extractPolicyLinksFromElement(element) {
+    const links = [];
+    const seenUrls = new Set();
+
+    // Patterns for identifying policy links
+    const linkPatterns = [
+      { pattern: /privacy\s*(policy|notice|statement)?/i, type: "privacy" },
+      {
+        pattern: /terms\s*(of\s*(service|use)|and\s*conditions)?/i,
+        type: "terms",
+      },
+      { pattern: /cookie\s*(policy|notice|statement)/i, type: "cookie" },
+      { pattern: /data\s*(protection|policy)/i, type: "privacy" },
+      { pattern: /legal\s*(notice|terms)/i, type: "terms" },
+      { pattern: /user\s*agreement/i, type: "terms" },
+      { pattern: /eula/i, type: "terms" },
+    ];
+
+    // Search in the element and its ancestors (up to 5 levels up)
+    let searchElement = element;
+    let depth = 0;
+    const maxDepth = 5;
+
+    while (searchElement && depth < maxDepth) {
+      const anchorElements = searchElement.querySelectorAll("a[href]");
+
+      for (const anchor of anchorElements) {
+        const href = anchor.href;
+        const text = (anchor.textContent || "").trim();
+
+        // Skip empty, javascript, or anchor-only links
+        if (
+          !href ||
+          href.startsWith("javascript:") ||
+          href === "#" ||
+          href.endsWith("#")
+        )
+          continue;
+
+        // Skip if we've already seen this URL
+        if (seenUrls.has(href)) continue;
+
+        // Check link text and href against patterns
+        for (const { pattern, type } of linkPatterns) {
+          if (pattern.test(text) || pattern.test(href)) {
+            seenUrls.add(href);
+            links.push({
+              url: href,
+              text: text || getLinkTypeLabel(type),
+              type: type,
+              element: anchor,
+            });
+            break;
+          }
+        }
+      }
+
+      // Move to parent element
+      searchElement = searchElement.parentElement;
+      depth++;
+    }
+
+    // If no links found in the element hierarchy, search the whole form or container
+    if (links.length === 0) {
+      const container = element.closest(
+        'form, [role="dialog"], .modal, [class*="modal"], [class*="signup"], [class*="login"], [class*="register"], section, main'
+      );
+      if (container && container !== searchElement) {
+        const allLinks = container.querySelectorAll(
+          'a[href*="privacy"], a[href*="policy"], a[href*="terms"], a[href*="legal"], a[href*="tos"]'
+        );
+        for (const anchor of allLinks) {
+          const href = anchor.href;
+          if (seenUrls.has(href) || !href || href.startsWith("javascript:"))
+            continue;
+
+          let type = "policy";
+          if (/privacy|gdpr|data/i.test(href)) type = "privacy";
+          else if (/terms|legal|tos|eula/i.test(href)) type = "terms";
+          else if (/cookie/i.test(href)) type = "cookie";
+
+          seenUrls.add(href);
+          links.push({
+            url: href,
+            text: (anchor.textContent || "").trim() || getLinkTypeLabel(type),
+            type: type,
+            element: anchor,
+          });
+        }
+      }
+    }
+
+    return links;
+  }
+
+  function getLinkTypeLabel(type) {
+    const labels = {
+      privacy: "Privacy Policy",
+      terms: "Terms of Service",
+      cookie: "Cookie Policy",
+      policy: "Policy",
+    };
+    return labels[type] || "Policy";
   }
 
   // Set up detection for buttons that would trigger implicit agreement
@@ -267,37 +422,67 @@
     ];
 
     // Find the parent container
-    const container = agreementElement.closest('form, [role="dialog"], .modal, [class*="modal"], [class*="signup"], [class*="login"], [class*="register"], section, main') || document.body;
+    const container =
+      agreementElement.closest(
+        'form, [role="dialog"], .modal, [class*="modal"], [class*="signup"], [class*="login"], [class*="register"], section, main'
+      ) || document.body;
+
+    // Extract policy links from the agreement element once
+    const policyLinks = extractPolicyLinksFromElement(agreementElement);
+    console.log(
+      "[Privacy Parser] Found policy links for continue button detection:",
+      policyLinks
+    );
 
     // Look for buttons in the same container
-    const buttons = container.querySelectorAll('button, [role="button"], input[type="submit"], a[class*="btn"], a[class*="button"]');
-    
-    buttons.forEach(button => {
-      const buttonText = (button.textContent || button.value || '').trim();
-      
+    const buttons = container.querySelectorAll(
+      'button, [role="button"], input[type="submit"], a[class*="btn"], a[class*="button"]'
+    );
+
+    buttons.forEach((button) => {
+      const buttonText = (button.textContent || button.value || "").trim();
+
       for (const pattern of continueButtonPatterns) {
         if (pattern.test(buttonText)) {
           console.log("[Privacy Parser] Found continue button:", buttonText);
-          
+
           // Add a click listener to warn the user
-          button.addEventListener('click', async (event) => {
-            console.log("[Privacy Parser] Continue button clicked (implicit agreement):", buttonText);
-            
-            // Show warning overlay
-            overlay.showAgreementNotification(`Clicking "${buttonText}" agrees to Terms/Privacy`);
-            
-            // Notify service worker
-            try {
-              await chrome.runtime.sendMessage({
-                type: "POLICY_AGREEMENT_CLICKED",
-                buttonText: buttonText,
-                url: window.location.href,
-              });
-            } catch (error) {
-              console.log("[Privacy Parser] Could not notify:", error.message);
-            }
-          }, { capture: true, once: true });
-          
+          button.addEventListener(
+            "click",
+            async (event) => {
+              console.log(
+                "[Privacy Parser] Continue button clicked (implicit agreement):",
+                buttonText
+              );
+
+              // Show warning overlay with policy links
+              overlay.showAgreementNotification(
+                `Clicking "${buttonText}" agrees to Terms/Privacy`,
+                policyLinks
+              );
+
+              // Notify service worker
+              try {
+                await chrome.runtime.sendMessage({
+                  type: "POLICY_AGREEMENT_CLICKED",
+                  buttonText: buttonText,
+                  url: window.location.href,
+                  policyLinks: policyLinks.map((l) => ({
+                    url: l.url,
+                    text: l.text,
+                    type: l.type,
+                  })),
+                });
+              } catch (error) {
+                console.log(
+                  "[Privacy Parser] Could not notify:",
+                  error.message
+                );
+              }
+            },
+            { capture: true, once: true }
+          );
+
           break;
         }
       }
@@ -449,8 +634,19 @@
           associatedText.substring(0, 100)
         );
 
-        // Show warning overlay
-        overlay.showAgreementNotification("I agree to Terms/Privacy Policy");
+        // Find the checkbox's associated label or parent element to extract policy links
+        let linkElement = checkbox.closest("label") || checkbox.parentElement;
+        const policyLinks = extractPolicyLinksFromElement(linkElement);
+        console.log(
+          "[Privacy Parser] Found policy links near checkbox:",
+          policyLinks
+        );
+
+        // Show warning overlay with policy links
+        overlay.showAgreementNotification(
+          "I agree to Terms/Privacy Policy",
+          policyLinks
+        );
 
         // Notify service worker
         try {
@@ -458,6 +654,11 @@
             type: "POLICY_AGREEMENT_CLICKED",
             buttonText: "Checkbox: " + associatedText.substring(0, 50),
             url: window.location.href,
+            policyLinks: policyLinks.map((l) => ({
+              url: l.url,
+              text: l.text,
+              type: l.type,
+            })),
           });
           console.log(
             "[Privacy Parser] Checkbox agreement notification sent:",
@@ -626,10 +827,11 @@
           success: true,
           results: {
             hasCookiePopup: enhancedDetectionResults.cookiePopup.detected,
-            darkPatterns: enhancedDetectionResults.cookiePopup.darkPatterns || [],
+            darkPatterns:
+              enhancedDetectionResults.cookiePopup.darkPatterns || [],
             signupAgreements: enhancedDetectionResults.signupAgreements.length,
-            summary: enhancedDetectionResults.summary
-          }
+            summary: enhancedDetectionResults.summary,
+          },
         });
         break;
 
@@ -681,7 +883,7 @@
           overlay.showMinimalIndicator();
         }
       }
-      
+
       // Also check for implicit agreement text that might have loaded dynamically
       if (!implicitAgreementNotified) {
         checkForImplicitAgreement();

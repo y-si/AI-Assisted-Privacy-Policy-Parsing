@@ -706,10 +706,33 @@ body {
   border-radius: 4px;
   cursor: pointer;
   transition: background 0.2s;
+  position: relative;
 }
 
 .risk-quote:hover {
   background: #eef2ff;
+}
+
+.risk-quote::after,
+.data-quote::after {
+  content: "🔍 Click to find in document";
+  display: block;
+  font-size: 9px;
+  font-style: normal;
+  color: var(--primary-color);
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.risk-quote:hover::after,
+.data-quote:hover::after {
+  opacity: 1;
+}
+
+.risk-quote.external-link::after,
+.data-quote.external-link::after {
+  content: "↗ Click to open policy and find";
 }
 
 /* Data Items */
